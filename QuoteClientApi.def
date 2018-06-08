@@ -1,0 +1,6 @@
+EXPORTS
+	GetDllVersion @1
+	CreateQuoteApi @2
+	GetSettingInfo @3
+	CreatePrimeApi @4
+	CreateQueryApi @5
