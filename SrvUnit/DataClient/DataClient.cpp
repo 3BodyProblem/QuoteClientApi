@@ -156,7 +156,9 @@ int32_t STDCALL		MDataClient::GetMarketStatus(uint8_t cMarket,int32_t& nStatus, 
 	return iret;
 }
 
-//....................................................................................................................................................................................................................................................................
+
+///< ----------------------------- 60分钟线 --------------------------------------------
+
 
 Minute60LineStatus::Minute60LineStatus()
 {
@@ -655,17 +657,10 @@ void MinGenerator::DumpMinutes()
 		return;
 	}
 
-	std::ofstream			oDumper;						///< 文件句柄
 	unsigned int			nLastLineIndex = 0;				///< 上一笔快照是索引值
 	T_MIN_LINE				tagLastLine = { 0 };			///< 上一笔快照的最后情况
 	T_MIN_LINE				tagLastLastLine = { 0 };		///< 上上笔快照的最后情况
-	///< 准备好需要写入的文件句柄
-/*	if( false == PrepareMinuteFile( m_eMarket, m_pszCode, m_nDate, oDumper ) )
-	{
-		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "MinGenerator::DumpMinutes() : cannot open file 4 security:%s", m_pszCode );
-		return;
-	}
-*/
+
 	if( true == s_bCloseMarket ) m_nDataSize = m_nMaxLineCount;
 	///< 从头遍历，直到最后一个收到的时间节点上
 	for( int i = 0; i < m_nDataSize; i++ )
@@ -676,8 +671,8 @@ void MinGenerator::DumpMinutes()
 		}
 		///< 跳过已经落盘过的时间节点，以m_pDataCache[i].Time大于零为标识，进行"后续写入"
 		if( i > m_nWriteSize ) {
-			char			pszLine[1024] = { 0 };
-			T_MIN_LINE		tagMinuteLine = { 0 };
+			char				pszLine[1024] = { 0 };
+			T_Minute_Line		tagMinuteLine = { 0 };
 
 			tagMinuteLine.Date = m_nDate;
 			if( i == 0 ) {											///< [ 上午121根分钟线，下午120根 ]
@@ -705,10 +700,8 @@ void MinGenerator::DumpMinutes()
 				tagMinuteLine.LowPx = m_pDataCache[i].LowPx / m_dPriceRate;
 				tagMinuteLine.ClosePx = m_pDataCache[i].ClosePx / m_dPriceRate;
 				tagMinuteLine.Voip = m_pDataCache[i].Voip / m_dPriceRate;
-				int		nLen = ::sprintf( pszLine, "%d,%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%I64d,%I64d,%I64d,%.4f\n"
-										, tagMinuteLine.Date, tagMinuteLine.Time, tagMinuteLine.OpenPx, tagMinuteLine.HighPx, tagMinuteLine.LowPx, tagMinuteLine.ClosePx
-										, tagMinuteLine.SettlePx, tagMinuteLine.Amount, tagMinuteLine.Volume, tagMinuteLine.OpenInterest, tagMinuteLine.NumTrades, tagMinuteLine.Voip );
-				oDumper.write( pszLine, nLen );
+				Global_QueryClient.GetHandle()->OnMarketMinuteLine( m_eMarket, &tagMinuteLine );
+
 				m_pDataCache[i].Time = 0;								///< 把时间清零，即，标记为已经落盘
 				m_nWriteSize = i;										///< 更新最新的写盘数据位置
 //if( ::strncmp( m_pszCode, "600000", 6 ) == 0 )::printf( "[WRITE], 600000, Time=%u, Open=%f, High=%f, Low=%f, %f, %I64d\n", tagMinuteLine.Time, tagMinuteLine.OpenPx, tagMinuteLine.HighPx, tagMinuteLine.LowPx, tagMinuteLine.ClosePx, tagMinuteLine.Volume );
@@ -730,10 +723,7 @@ void MinGenerator::DumpMinutes()
 					tagMinuteLine.NumTrades = tagLastLine.NumTrades - tagLastLastLine.NumTrades;
 				}
 
-				int		nLen = ::sprintf( pszLine, "%d,%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%I64d,%I64d,%I64d,%.4f\n"
-										, tagMinuteLine.Date, tagMinuteLine.Time, tagMinuteLine.OpenPx, tagMinuteLine.HighPx, tagMinuteLine.LowPx, tagMinuteLine.ClosePx
-										, tagMinuteLine.SettlePx, tagMinuteLine.Amount, tagMinuteLine.Volume, tagMinuteLine.OpenInterest, tagMinuteLine.NumTrades, tagMinuteLine.Voip );
-				oDumper.write( pszLine, nLen );
+				Global_QueryClient.GetHandle()->OnMarketMinuteLine( m_eMarket, &tagMinuteLine );
 				m_nWriteSize = i;										///< 更新最新的写盘数据位置
 //if( ::strncmp( m_pszCode, "600000", 6 ) == 0 )::printf( "[WRITE], 600000, Time=%u, Open=%f, High=%f, Low=%f, %f, %I64d\n", tagMinuteLine.Time, tagMinuteLine.OpenPx, tagMinuteLine.HighPx, tagMinuteLine.LowPx, tagMinuteLine.ClosePx, tagMinuteLine.Volume );
 			}
@@ -759,10 +749,6 @@ void MinGenerator::DumpMinutes()
 			tagLastLine.ClosePx = m_pDataCache[i].ClosePx / m_dPriceRate;
 			tagLastLine.Voip = m_pDataCache[i].Voip / m_dPriceRate;
 		}
-	}
-
-	if( oDumper.is_open() ) {
-		oDumper.close();
 	}
 }
 
@@ -855,7 +841,7 @@ int SecurityMinCache::NewSecurity( enum XDFMarket eMarket, const std::string& sC
 	return 0;
 }
 
-int SecurityMinCache::UpdateSecurity( const XDFAPI_IndexData& refObj, unsigned int nDate, unsigned int nTime )
+int SecurityMinCache::UpdateSecurity( const tagCcComm_IndexData& refObj, unsigned int nDate, unsigned int nTime )
 {
 	std::string					sCode( refObj.Code, 6 );
 	MLocalSection				section( &m_oLockData );
@@ -879,7 +865,7 @@ int SecurityMinCache::UpdateSecurity( const XDFAPI_IndexData& refObj, unsigned i
 	return -1;
 }
 
-int SecurityMinCache::UpdateSecurity( const XDFAPI_StockData5& refObj, unsigned int nDate, unsigned int nTime )
+int SecurityMinCache::UpdateSecurity( const tagCcComm_StockData5& refObj, unsigned int nDate, unsigned int nTime )
 {
 	std::string					sCode( refObj.Code, 6 );
 	MLocalSection				section( &m_oLockData );
@@ -1144,46 +1130,6 @@ void* STDCALL MQueryClient::QueryThreadFunc( void* pParam )
 	return NULL;
 }
 
-void MQueryClient::NewCode4SHL1( std::string sCode, unsigned int nDate, unsigned int nTime, double dPriceRate, T_Minute_Line& refObj )
-{
-	MLocalSection					lock(&m_SectionSHL1);
-	TMAP_60MINU_LINE::iterator		it = m_mapMinuteLine4SHL1.find( sCode );
-
-	if( m_mapMinuteLine4SHL1.end() == it )				///< 没有缓存数据的情况
-	{
-		Minute60LineStatus			objNewLine;
-
-		objNewLine.SetRefParam( XDF_SH, refObj.Code, 0/*nDate*/, 0/*nTime*/, dPriceRate );
-		objNewLine.Update( refObj, true );
-		m_mapMinuteLine4SHL1[sCode] = objNewLine;
-	}
-	else												///< 有缓存数据的情况（比如，行情时间内，网络断开后恢复）
-	{
-		it->second.SetRefParam( XDF_SH, refObj.Code, 0/*nDate*/, 0/*nTime*/, dPriceRate );
-		it->second.Update( refObj, true );
-	}
-}
-
-void MQueryClient::NewCode4SZL1( std::string sCode, unsigned int nDate, unsigned int nTime, double dPriceRate, T_Minute_Line& refObj )
-{
-	MLocalSection					lock( &m_SectionSZL1 );
-	TMAP_60MINU_LINE::iterator		it = m_mapMinuteLine4SZL1.find( sCode );
-
-	if( m_mapMinuteLine4SZL1.end() == it )				///< 没有缓存数据的情况
-	{
-		Minute60LineStatus			objNewLine;
-
-		objNewLine.SetRefParam( XDF_SZ, refObj.Code, 0/*nDate*/, 0/*nTime*/, dPriceRate );
-		objNewLine.Update( refObj, true );
-		m_mapMinuteLine4SZL1[sCode] = objNewLine;
-	}
-	else											///< 有缓存数据的情况（比如，行情时间内，网络断开后恢复）
-	{
-		it->second.SetRefParam( XDF_SZ, refObj.Code, 0/*nDate*/, 0/*nTime*/, dPriceRate );
-		it->second.Update( refObj, true );
-	}
-}
-
 void MQueryClient::OnSHL1Index( unsigned int nMkTime, tagCcComm_IndexData& refData )
 {
 	if( nMkTime > m_nMkTime4SHL1 ) {
@@ -1195,13 +1141,7 @@ void MQueryClient::OnSHL1Index( unsigned int nMkTime, tagCcComm_IndexData& refDa
 		return;
 	}
 
-	MLocalSection				lock(&m_SectionSHL1);
-	TMAP_60MINU_LINE::iterator	it = m_mapMinuteLine4SHL1.find( std::string(refData.Code, 6) );
-
-	if( m_mapMinuteLine4SHL1.end() != it )
-	{
-		it->second.Update( m_nMkDate4SHL1, nMkTime, refData );
-	}
+	m_obj1MinCache4SHL1.UpdateSecurity( refData, m_nMkDate4SHL1, nMkTime );
 }
 
 void MQueryClient::OnSHL1Snap( unsigned int nMkTime, tagCcComm_StockData5& refData )
@@ -1215,13 +1155,7 @@ void MQueryClient::OnSHL1Snap( unsigned int nMkTime, tagCcComm_StockData5& refDa
 		return;
 	}
 
-	MLocalSection				lock(&m_SectionSHL1);
-	TMAP_60MINU_LINE::iterator	it = m_mapMinuteLine4SHL1.find( std::string(refData.Code, 6) );
-
-	if( m_mapMinuteLine4SHL1.end() != it )
-	{
-		it->second.Update( m_nMkDate4SHL1, nMkTime, refData );
-	}
+	m_obj1MinCache4SHL1.UpdateSecurity( refData, m_nMkDate4SHL1, nMkTime );
 }
 
 void MQueryClient::OnSZL1Index( unsigned int nMkTime, tagCcComm_IndexData& refData )
@@ -1235,13 +1169,7 @@ void MQueryClient::OnSZL1Index( unsigned int nMkTime, tagCcComm_IndexData& refDa
 		return;
 	}
 
-	MLocalSection				lock(&m_SectionSZL1);
-	TMAP_60MINU_LINE::iterator	it = m_mapMinuteLine4SZL1.find( std::string(refData.Code, 6) );
-
-	if( m_mapMinuteLine4SZL1.end() != it )
-	{
-		it->second.Update( m_nMkDate4SZL1, nMkTime, refData );
-	}
+	m_obj1MinCache4SZL1.UpdateSecurity( refData, m_nMkDate4SHL1, nMkTime );
 }
 
 void MQueryClient::OnSZL1Snap( unsigned int nMkTime, tagCcComm_StockData5& refData )
@@ -1255,13 +1183,7 @@ void MQueryClient::OnSZL1Snap( unsigned int nMkTime, tagCcComm_StockData5& refDa
 		return;
 	}
 
-	MLocalSection				lock(&m_SectionSZL1);
-	TMAP_60MINU_LINE::iterator	it = m_mapMinuteLine4SZL1.find( std::string(refData.Code, 6) );
-
-	if( m_mapMinuteLine4SZL1.end() != it )
-	{
-		it->second.Update( m_nMkDate4SZL1, nMkTime, refData );
-	}
+	m_obj1MinCache4SZL1.UpdateSecurity( refData, m_nMkDate4SHL1, nMkTime );
 }
 
 void MQueryClient::OnMarketAvailableNotify( unsigned char cMkID, int nStatus )
@@ -1282,6 +1204,7 @@ void MQueryClient::OnMarketAvailableNotify( unsigned char cMkID, int nStatus )
 			if( (nRet = LoadMinuteLine4SHL1()) > 0 )	///< 加载SHL1市场分钟线状态
 			{
 				SetWareCount4SHL1( nRet );				///< 设置SHL1市场分钟线“可查询状态”
+				m_obj1MinCache4SHL1.ActivateDumper();
 			}
 		}
 		break;
@@ -1292,6 +1215,7 @@ void MQueryClient::OnMarketAvailableNotify( unsigned char cMkID, int nStatus )
 			if( (nRet = LoadMinuteLine4SZL1()) > 0 )	///< 加载SZL1市场分钟线状态
 			{
 				SetWareCount4SZL1( nRet );				///< 设置SZL1市场分钟线“可查询状态”
+				m_obj1MinCache4SZL1.ActivateDumper();
 			}
 		}
 		break;
@@ -1339,6 +1263,10 @@ int MQueryClient::LoadMinuteLine4SHL1()
 
 	///< -------------- 获取上海的码表信息 --------------------------------------------
 	nErrorCode = Global_DllMgr.GetCodeTable( XDF_SH, NULL, NULL, nCodeCount );						///< 先获取一下商品数量
+	if( 0 != m_obj1MinCache4SHL1.Initialize( nCodeCount ) ) {
+		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "MQueryClient::LoadMinuteLine4SHL1() : cannot initialize min1 buffer, errorcode = %d", nErrorCode );
+		return -100;
+	}
 	if( nErrorCode > 0 && nCodeCount > 0 )
 	{
 		int					noffset = (sizeof(XDFAPI_NameTableSh) + sizeof(XDFAPI_UniMsgHead)) * nCodeCount;	///< 根据商品数量，分配获取快照表需要的缓存
@@ -1414,7 +1342,7 @@ int MQueryClient::LoadMinuteLine4SHL1()
 
 			for( int i = 0; i < MsgCount; i++ )
 			{
-				T_Minute_Line			tagLine = { 0 };
+				MinGenerator::T_DATA		tagLine = { 0 };
 
 				if( abs(pMsgHead->MsgType) == 21 )			///< 指数
 				{
@@ -1429,15 +1357,7 @@ int MQueryClient::LoadMinuteLine4SHL1()
 					}
 					else
 					{
-						tagLine.Time = m_nMkTime4SHL1;
-						::memcpy( tagLine.Code, pData->Code, 6 );
-						tagLine.OpenPx = pData->Open / it->second;
-						tagLine.HighPx = pData->High / it->second;
-						tagLine.LowPx = pData->Low / it->second;
-						tagLine.ClosePx = pData->Now / it->second;
-						tagLine.Amount = pData->Amount;
-						tagLine.Volume = pData->Volume;
-						NewCode4SHL1( sCode, tagMkInfo.MarketDate, m_nMkTime4SHL1, it->second, tagLine );
+						m_obj1MinCache4SHL1.NewSecurity( XDF_SH, sCode, tagMkInfo.MarketDate, it->second, tagLine );
 					}
 
 					pbuf += sizeof(XDFAPI_IndexData);
@@ -1455,17 +1375,7 @@ int MQueryClient::LoadMinuteLine4SHL1()
 					}
 					else
 					{
-						tagLine.Time = m_nMkTime4SHL1;
-						::memcpy( tagLine.Code, pData->Code, 6 );
-						tagLine.OpenPx = pData->Open / it->second;
-						tagLine.HighPx = pData->High / it->second;
-						tagLine.LowPx = pData->Low / it->second;
-						tagLine.ClosePx = pData->Now / it->second;
-						tagLine.Amount = pData->Amount;
-						tagLine.Volume = pData->Volume;
-						tagLine.Voip = pData->Voip / it->second;
-						tagLine.NumTrades = pData->Records;
-						NewCode4SHL1( sCode, tagMkInfo.MarketDate, m_nMkTime4SHL1, it->second, tagLine );
+						m_obj1MinCache4SHL1.NewSecurity( XDF_SH, sCode, tagMkInfo.MarketDate, it->second, tagLine );
 					}
 
 					pbuf += sizeof(XDFAPI_StockData5);
@@ -1525,6 +1435,10 @@ int MQueryClient::LoadMinuteLine4SZL1()
 
 	///< -------------- 获取深圳的码表信息 --------------------------------------------
 	nErrorCode = Global_DllMgr.GetCodeTable( XDF_SZ, NULL, NULL, nCodeCount );						///< 先获取一下商品数量
+	if( 0 != m_obj1MinCache4SZL1.Initialize( nCodeCount ) ) {
+		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "MQueryClient::LoadMinuteLine4SZL1() : cannot initialize min1 buffer, errorcode = %d", nErrorCode );
+		return -100;
+	}
 	if( nErrorCode > 0 && nCodeCount > 0 )
 	{
 		int					noffset = (sizeof(XDFAPI_NameTableSz) + sizeof(XDFAPI_UniMsgHead)) * nCodeCount;	///< 根据商品数量，分配获取快照表需要的缓存
@@ -1600,7 +1514,7 @@ int MQueryClient::LoadMinuteLine4SZL1()
 
 			for( int i = 0; i < MsgCount; i++ )
 			{
-				T_Minute_Line			tagLine = { 0 };
+				MinGenerator::T_DATA			tagLine = { 0 };
 
 				if( abs(pMsgHead->MsgType) == 21 )			///< 指数
 				{
@@ -1615,15 +1529,7 @@ int MQueryClient::LoadMinuteLine4SZL1()
 					}
 					else
 					{
-						tagLine.Time = m_nMkTime4SZL1;
-						::memcpy( tagLine.Code, pData->Code, 6 );
-						tagLine.OpenPx = pData->Open / it->second;
-						tagLine.HighPx = pData->High / it->second;
-						tagLine.LowPx = pData->Low / it->second;
-						tagLine.ClosePx = pData->Now / it->second;
-						tagLine.Amount = pData->Amount;
-						tagLine.Volume = pData->Volume;
-						NewCode4SZL1( sCode, tagMkInfo.MarketDate, m_nMkTime4SZL1, it->second, tagLine );
+						m_obj1MinCache4SZL1.NewSecurity( XDF_SZ, sCode, tagMkInfo.MarketDate, it->second, tagLine );
 					}
 
 					pbuf += sizeof(XDFAPI_IndexData);
@@ -1641,17 +1547,7 @@ int MQueryClient::LoadMinuteLine4SZL1()
 					}
 					else
 					{
-						tagLine.Time = m_nMkTime4SZL1;
-						::memcpy( tagLine.Code, pData->Code, 6 );
-						tagLine.OpenPx = pData->Open / it->second;
-						tagLine.HighPx = pData->High / it->second;
-						tagLine.LowPx = pData->Low / it->second;
-						tagLine.ClosePx = pData->Now / it->second;
-						tagLine.Amount = pData->Amount;
-						tagLine.Volume = pData->Volume;
-						tagLine.Voip = pData->Voip / it->second;
-						tagLine.NumTrades = pData->Records;
-						NewCode4SZL1( sCode, tagMkInfo.MarketDate, m_nMkTime4SZL1, it->second, tagLine );
+						m_obj1MinCache4SZL1.NewSecurity( XDF_SZ, sCode, tagMkInfo.MarketDate, it->second, tagLine );
 					}
 
 					pbuf += sizeof(XDFAPI_StockData5);

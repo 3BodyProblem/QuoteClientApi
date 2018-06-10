@@ -293,8 +293,8 @@ public:
 	 * @param[in]				objData			行情价格
 	 * @return					==0				成功
 	 */
-	int							UpdateSecurity( const XDFAPI_IndexData& refObj, unsigned int nDate, unsigned int nTime );
-	int							UpdateSecurity( const XDFAPI_StockData5& refObj, unsigned int nDate, unsigned int nTime );
+	int							UpdateSecurity( const tagCcComm_IndexData& refObj, unsigned int nDate, unsigned int nTime );
+	int							UpdateSecurity( const tagCcComm_StockData5& refObj, unsigned int nDate, unsigned int nTime );
 
 protected:
 	static void*	__stdcall	DumpThread( void* pSelf );
@@ -398,26 +398,6 @@ protected:
 	 */
 	void						SetWareCount4SZL1( int nWareCount );
 
-	/**
-	 * @brief					增加SHL1商品行情数据列表
-	 * @param[in]				sCode			商品代码
-	 * @param[in]				nDate			市场日期
-	 * @param[in]				nTime			市场时间
-	 * @param[in]				dPriceRate		放大倍数
-	 * @param[in]				refObj			分钟线信息
-	 */
-	void						NewCode4SHL1( std::string sCode, unsigned int nDate, unsigned int nTime, double dPriceRate, T_Minute_Line& refObj );
-
-	/**
-	 * @brief					增加SZL1商品行情数据列表
-	 * @param[in]				sCode			商品代码
-	 * @param[in]				nDate			市场日期
-	 * @param[in]				nTime			市场时间
-	 * @param[in]				dPriceRate		放大倍数
-	 * @param[in]				refObj			分钟线信息
-	 */
-	void						NewCode4SZL1( std::string sCode, unsigned int nDate, unsigned int nTime, double dPriceRate, T_Minute_Line& refObj );
-
 protected:
 	/**
 	 * @brief					查询处理数据派发
@@ -438,11 +418,9 @@ private:
 	int							m_nWareCount4SHL1;				///< 上海Lv1初始化成功标识
 	unsigned int				m_nMkTime4SHL1;					///< 上海Lv1市场时间
 	unsigned int				m_nMkDate4SHL1;					///< 上海Lv1市场日期
-	MCriticalSection			m_SectionSHL1;
 	int							m_nWareCount4SZL1;				///< 深圳Lv1初始化成功标识
 	unsigned int				m_nMkTime4SZL1;					///< 深圳Lv1市场时间
 	unsigned int				m_nMkDate4SZL1;					///< 上海Lv1市场日期
-	MCriticalSection			m_SectionSZL1;
 	SecurityMinCache			m_obj1MinCache4SHL1;			///< 上证L1分钟线缓存
 	SecurityMinCache			m_obj1MinCache4SZL1;			///< 深证L1分钟线缓存
 };
