@@ -167,6 +167,11 @@ protected:
 ///< 1分钟线计算并落盘类 ///////////////////////////////////////////////////////////////////////////////////////////
 
 
+/**
+ * @class						Min1Sync
+ * @brief						沪、深一分钟线同步类
+ * @author						barry
+ */
 class Min1Sync
 {
 public:
@@ -277,7 +282,7 @@ class SecurityMinCache
 public:
 	typedef std::map<std::string,MinGenerator>	T_MAP_MINUTES;
 public:
-	SecurityMinCache();
+	SecurityMinCache( enum XDFMarket eMkID );
 	~SecurityMinCache();
 
 	/**
@@ -321,6 +326,7 @@ protected:
 	static void*	__stdcall	DumpThread( void* pSelf );
 
 protected:
+	Min1Sync					m_objSyncMin1;			///< 1分钟线同步对象
 	enum XDFMarket				m_eMarketID;			///< 市场编号
 	MThread						m_oDumpThread;			///< 分钟线落盘数据
 	unsigned int				m_nAlloPos;				///< 缓存已经分配的位置

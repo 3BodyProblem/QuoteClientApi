@@ -3,6 +3,7 @@
 #include <math.h>
 #include "DataClient.h"
 #include <fstream>
+#include <shellapi.h>
 #include "../GlobalIO/GlobalIO.h"
 
 
@@ -536,14 +537,39 @@ bool Min1Sync::Sync()
 
 void* __stdcall Min1Sync::SyncThread( void* pSelf )
 {
-	Min1Sync&	refSync = *((Min1Sync*)pSelf);
+	SHELLEXECUTEINFO	tagExeInfo = { 0 };
+	Min1Sync&			refSync = *((Min1Sync*)pSelf);
+	std::string			sCmd = "/C .\\client4shrealmin1.bat";
 
-	m_bSyned = false;
+	if( refSync.m_eMarketID == XDF_SZ ) {
+		sCmd = "/C .\\client4szrealmin1.bat";
+	}
+
 	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "Min1Sync::SyncThread() : MarketID = %d, enter...................", (int)(refSync.m_eMarketID) );
 
+	refSync.m_bSyned = false;
+	tagExeInfo.cbSize = sizeof(SHELLEXECUTEINFO);
+	tagExeInfo.fMask = SEE_MASK_NOCLOSEPROCESS;
+	tagExeInfo.hwnd = NULL;
+	tagExeInfo.lpVerb = NULL;
+	tagExeInfo.lpFile = "cmd";
+	tagExeInfo.lpParameters = sCmd.c_str();
+	tagExeInfo.lpDirectory = Global_Option.GetSyncExeFolder();
+	tagExeInfo.nShow = SW_HIDE;
+	tagExeInfo.hInstApp = NULL;
 
-	m_bSyned = true;
-	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "Min1Sync::SyncThread() : MarketID = %d, leave...................", (int)(refSync.m_eMarketID) );
+	if( !::ShellExecuteEx( &tagExeInfo ) ) {
+		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "Min1Sync::SyncThread() : MarketID = %d, Workpath = %s, Terminated!!!", (int)(refSync.m_eMarketID), Global_Option.GetSyncExeFolder() );
+		return NULL;
+	}
+
+	if( WAIT_TIMEOUT == ::WaitForSingleObject( tagExeInfo.hProcess, 1000 * 60 * 5 ) ) {
+		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "Min1Sync::SyncThread() : MarketID = %d, Workpath = %s, Terminated (overtime)!!!", (int)(refSync.m_eMarketID), Global_Option.GetSyncExeFolder() );
+		return NULL;
+	}
+
+	refSync.m_bSyned = true;
+	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "Min1Sync::SyncThread() : MarketID = %d, leave...", (int)(refSync.m_eMarketID) );
 
 	return NULL;
 }
@@ -786,8 +812,9 @@ void MinGenerator::DumpMinutes()
 	}
 }
 
-SecurityMinCache::SecurityMinCache()
- : m_nSecurityCount( 0 ), m_pMinDataTable( NULL ), m_nAlloPos( 0 ), m_eMarketID( XDF_SZOPT )
+SecurityMinCache::SecurityMinCache( enum XDFMarket eMkID )
+ : m_nSecurityCount( 0 ), m_pMinDataTable( NULL ), m_nAlloPos( 0 ), m_eMarketID( eMkID )
+ , m_objSyncMin1( eMkID )
 {
 	m_vctCode.clear();
 	m_objMapMinutes.clear();
@@ -812,6 +839,8 @@ int SecurityMinCache::Initialize( unsigned int nSecurityCount )
 	m_nSecurityCount = nTotalCount;
 	::memset( m_pMinDataTable, 0, sizeof(MinGenerator::T_DATA) * nTotalCount );
 	m_vctCode.reserve( nSecurityCount + 32 );
+
+			m_objSyncMin1.Sync();
 
 	return 0;
 }
@@ -841,6 +870,7 @@ void SecurityMinCache::ActivateDumper()
 	{
 		if( 0 != m_oDumpThread.StartThread( "SecurityMinCache::ActivateDumper()", DumpThread, this ) ) {
 			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "SecurityMinCache::ActivateDumper() : failed 2 create minute line thread(1)" );
+			return;
 		}
 	}
 }
@@ -849,7 +879,6 @@ int SecurityMinCache::NewSecurity( enum XDFMarket eMarket, const std::string& sC
 {
 	MLocalSection			section( &m_oLockData );
 
-	m_eMarketID = eMarket;
 	if( (m_nAlloPos+1) >= m_nSecurityCount )
 	{
 		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "SecurityMinCache::NewSecurity() : cannot grap any section from buffer ( %u:%u )", m_nAlloPos, m_nSecurityCount );
@@ -974,6 +1003,7 @@ void* SecurityMinCache::DumpThread( void* pSelf )
 MQueryClient::MQueryClient()
  : m_bIsQuerying( false ), m_pQuoteQuerySpi( NULL ), m_nBeginTime( 0 ), m_nEndTime( 0 )
  , m_nMkDate4SHL1( 0 ), m_nMkDate4SZL1( 0 ), m_nMkTime4SHL1( 0 ), m_nMkTime4SZL1( 0 )
+ , m_obj1MinCache4SHL1( XDF_SH ), m_obj1MinCache4SZL1( XDF_SZ )
 {
 	Release();
 }
