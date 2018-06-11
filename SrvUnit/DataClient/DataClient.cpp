@@ -541,12 +541,21 @@ void* __stdcall Min1Sync::SyncThread( void* pSelf )
 	Min1Sync&			refSync = *((Min1Sync*)pSelf);
 	std::string			sCmd = "/C .\\client4shrealmin1.bat";
 
+	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "Min1Sync::SyncThread() : MarketID = %d, enter...................", (int)(refSync.m_eMarketID) );
+
+	unsigned int		nLoopTimes = 60 * Global_Option.GetSyncIntervalMin();
+	for( int n = 0; n < nLoopTimes && refSync.m_oSyncThread.GetThreadStopFlag() == false; n++ ) {
+		MThread::Sleep( 1000 );
+	}
+
+	if( true == refSync.m_oSyncThread.GetThreadStopFlag() ) {
+		return NULL;
+	}
+
+	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "Min1Sync::SyncThread() : MarketID = %d, sync...................", (int)(refSync.m_eMarketID) );
 	if( refSync.m_eMarketID == XDF_SZ ) {
 		sCmd = "/C .\\client4szrealmin1.bat";
 	}
-
-	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "Min1Sync::SyncThread() : MarketID = %d, enter...................", (int)(refSync.m_eMarketID) );
-
 	refSync.m_bSyned = false;
 	tagExeInfo.cbSize = sizeof(SHELLEXECUTEINFO);
 	tagExeInfo.fMask = SEE_MASK_NOCLOSEPROCESS;
@@ -563,7 +572,7 @@ void* __stdcall Min1Sync::SyncThread( void* pSelf )
 		return NULL;
 	}
 
-	if( WAIT_TIMEOUT == ::WaitForSingleObject( tagExeInfo.hProcess, 1000 * 60 * 5 ) ) {
+	if( WAIT_TIMEOUT == ::WaitForSingleObject( tagExeInfo.hProcess, 1000 * 60 * 10 ) ) {
 		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "Min1Sync::SyncThread() : MarketID = %d, Workpath = %s, Terminated (overtime)!!!", (int)(refSync.m_eMarketID), Global_Option.GetSyncExeFolder() );
 		return NULL;
 	}
@@ -840,8 +849,6 @@ int SecurityMinCache::Initialize( unsigned int nSecurityCount )
 	::memset( m_pMinDataTable, 0, sizeof(MinGenerator::T_DATA) * nTotalCount );
 	m_vctCode.reserve( nSecurityCount + 32 );
 
-			m_objSyncMin1.Sync();
-
 	return 0;
 }
 
@@ -868,9 +875,10 @@ void SecurityMinCache::ActivateDumper()
 {
 	if( false == m_oDumpThread.rbl_GetRunState() )
 	{
-		if( 0 != m_oDumpThread.StartThread( "SecurityMinCache::ActivateDumper()", DumpThread, this ) ) {
+		if( 0 > m_oDumpThread.StartThread( "SecurityMinCache::ActivateDumper()", DumpThread, this ) ) {
 			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "SecurityMinCache::ActivateDumper() : failed 2 create minute line thread(1)" );
-			return;
+		} else {
+			m_objSyncMin1.Sync();
 		}
 	}
 }
