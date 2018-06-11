@@ -5,12 +5,14 @@
 extern HANDLE Global_Handle;
 
 MOptionIO::MOptionIO()
+ : m_nSyncIntervalMin( 10 )
 {
 	m_bInited =false;
 	m_nCount =0;
 	memset(m_szModulePath, 0, 255);
 	memset(m_arrInfo, 0, sizeof(tagKeyFileInfo)*20 );
-	
+	::memset( m_pszExeFolder, 0, sizeof(m_pszExeFolder) );
+	::memset( m_pszDataFolder, 0, sizeof(m_pszDataFolder) );
 }
 
 MOptionIO::~MOptionIO()
@@ -55,6 +57,11 @@ int		MOptionIO::Instance()
 	char szNames[8192]={0};
 	int iret = GetPrivateProfileSectionNames(szNames, 8191, sziniFile);
 	memset(szFile,0, sizeof(szFile));
+
+	::GetPrivateProfileString(szNames, "ExeFolder", "", m_pszExeFolder, 254, sziniFile);
+	::GetPrivateProfileString(szNames, "DataFolder", "", m_pszDataFolder, 254, sziniFile);
+	m_nSyncIntervalMin = ::GetPrivateProfileInt( szNames, "SyncIntervalMin", 12, sziniFile );
+
 	int idx=0;
 	for (i=0; i<iret; i++)
 	{
@@ -145,13 +152,28 @@ void	MOptionIO::inner_loadcontent(const char* pszSection, const char* pszIniFile
 			_snprintf(oInfo.cAddress,127, "%s:%d", szIP, nPort);
 		}
 	}
-	
+
 	if (m_nCount < 19)
 	{
 		memcpy(&m_arrInfo[m_nCount], &oInfo, sizeof(tagKeyFileInfo) );
 		++m_nCount;
 	}
-	
+
+}
+
+unsigned int MOptionIO::GetSyncIntervalMin()
+{
+	return m_nSyncIntervalMin;
+}
+
+const char*	MOptionIO::GetSyncExeFolder()
+{
+	return m_pszExeFolder;
+}
+
+const char*	MOptionIO::GetSyncDataFolder()
+{
+	return m_pszDataFolder;
 }
 
 void	MOptionIO::GetModulePath(char* pszPath)

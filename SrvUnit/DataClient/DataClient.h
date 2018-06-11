@@ -167,6 +167,27 @@ protected:
 ///< 1分钟线计算并落盘类 ///////////////////////////////////////////////////////////////////////////////////////////
 
 
+class Min1Sync
+{
+public:
+	Min1Sync( enum XDFMarket eMkID );
+
+	/**
+	 * @brief					异步同步1分钟线数据
+	 * @return					true					启动同步线程,成功
+	 */
+	bool						Sync();
+
+protected:
+	static void*	__stdcall	SyncThread( void* pSelf );
+
+protected:
+	bool						m_bSyned;				///< 是否已经同步成功
+	MThread						m_oSyncThread;			///< 分钟线落盘数据
+	enum XDFMarket				m_eMarketID;			///< 市场编号
+};
+
+
 /**
  * @class						T_MIN_LINE
  * @brief						分钟线

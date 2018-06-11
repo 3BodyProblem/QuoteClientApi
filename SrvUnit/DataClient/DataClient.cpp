@@ -515,6 +515,39 @@ void Minute60LineStatus::Update( unsigned int nDate, unsigned int nMkTime, tagCc
 
 ///< ----------------------------- 1分钟线 --------------------------------------------
 
+Min1Sync::Min1Sync( enum XDFMarket eMkID )
+: m_eMarketID( eMkID ), m_bSyned( false )
+{
+}
+
+bool Min1Sync::Sync()
+{
+	if( false == m_oSyncThread.rbl_GetRunState() )
+	{
+		m_bSyned = false;
+		if( 0 != m_oSyncThread.StartThread( "QuoteQueryClient::Min1Sync::Sync()", SyncThread, this ) ) {
+			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "Min1Sync::Sync() : failed 2 create minute line sync thread" );
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void* __stdcall Min1Sync::SyncThread( void* pSelf )
+{
+	Min1Sync&	refSync = *((Min1Sync*)pSelf);
+
+	m_bSyned = false;
+	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "Min1Sync::SyncThread() : MarketID = %d, enter...................", (int)(refSync.m_eMarketID) );
+
+
+	m_bSyned = true;
+	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "Min1Sync::SyncThread() : MarketID = %d, leave...................", (int)(refSync.m_eMarketID) );
+
+	return NULL;
+}
+
 MinGenerator::MinGenerator()
  : m_nDate( 0 ), m_nMaxLineCount( 241 ), m_pDataCache( NULL ), m_dPriceRate( 0 )
  , m_nWriteSize( -1 ), m_nDataSize( 0 ), m_dAmountBefore930( 0. ), m_nVolumeBefore930( 0 ), m_nNumTradesBefore930( 0 )
@@ -575,7 +608,7 @@ int MinGenerator::Update( T_DATA& objData )
 		return -2;
 	}
 
-	unsigned int		nMKTime = objData.Time / 1000;
+	unsigned int		nMKTime = objData.Time;
 	unsigned int		nHH = nMKTime / 10000;
 	unsigned int		nMM = nMKTime % 10000 / 100;
 	int					nDataIndex = -1;
@@ -631,7 +664,6 @@ int MinGenerator::Update( T_DATA& objData )
 		pData->OpenPx = objData.ClosePx;
 		pData->HighPx = objData.ClosePx;
 		pData->LowPx = objData.ClosePx;
-//if( ::strncmp( m_pszCode, "600000", 6 ) == 0 )::printf( "First, 600000, Time=%u, Open=%u, Hight=%u, Low=%u, %u, %I64d\n", pData->Time, pData->OpenPx, pData->HighPx, pData->LowPx, pData->ClosePx, pData->Volume );
 	} else {
 		pData->Time = objData.Time;
 		if( objData.ClosePx > pData->HighPx ) {
@@ -640,7 +672,6 @@ int MinGenerator::Update( T_DATA& objData )
 		if( objData.ClosePx < pData->LowPx ) {
 			pData->LowPx = objData.ClosePx;
 		}
-//if( ::strncmp( m_pszCode, "600000", 6 ) == 0 )::printf( "Then, 600000, Time=%u, Open=%u, Hight=%u, Low=%u, %u, %I64d\n", pData->Time, pData->OpenPx, pData->HighPx, pData->LowPx, pData->ClosePx, pData->Volume );
 	}
 
 	if( nDataIndex > m_nDataSize ) {
@@ -674,6 +705,7 @@ void MinGenerator::DumpMinutes()
 			char				pszLine[1024] = { 0 };
 			T_Minute_Line		tagMinuteLine = { 0 };
 
+			::memcpy( tagMinuteLine.Code, m_pszCode, 6 );
 			tagMinuteLine.Date = m_nDate;
 			if( i == 0 ) {											///< [ 上午121根分钟线，下午120根 ]
 				tagMinuteLine.Time = 93000;							///< 9:30~9:30 = 1根 (i:0)
@@ -700,11 +732,12 @@ void MinGenerator::DumpMinutes()
 				tagMinuteLine.LowPx = m_pDataCache[i].LowPx / m_dPriceRate;
 				tagMinuteLine.ClosePx = m_pDataCache[i].ClosePx / m_dPriceRate;
 				tagMinuteLine.Voip = m_pDataCache[i].Voip / m_dPriceRate;
-				Global_QueryClient.GetHandle()->OnMarketMinuteLine( m_eMarket, &tagMinuteLine );
+				if( m_pDataCache[i].Time > 0 ) {
+					Global_QueryClient.GetHandle()->OnMarketMinuteLine( m_eMarket, &tagMinuteLine );
+				}
 
 				m_pDataCache[i].Time = 0;								///< 把时间清零，即，标记为已经落盘
 				m_nWriteSize = i;										///< 更新最新的写盘数据位置
-//if( ::strncmp( m_pszCode, "600000", 6 ) == 0 )::printf( "[WRITE], 600000, Time=%u, Open=%f, High=%f, Low=%f, %f, %I64d\n", tagMinuteLine.Time, tagMinuteLine.OpenPx, tagMinuteLine.HighPx, tagMinuteLine.LowPx, tagMinuteLine.ClosePx, tagMinuteLine.Volume );
 			} else {		////////////////////////< 处理9:30后的分钟线计算与落盘的情况 [1. 前面无成交的情况 2.前面是连续成交的情况]
 				if( i - nLastLineIndex > 1 ) {	///< 如果前面n分钟内无成交，则开盘最高最低等于ClosePx
 					tagMinuteLine.OpenPx = tagLastLine.ClosePx;
@@ -723,9 +756,10 @@ void MinGenerator::DumpMinutes()
 					tagMinuteLine.NumTrades = tagLastLine.NumTrades - tagLastLastLine.NumTrades;
 				}
 
-				Global_QueryClient.GetHandle()->OnMarketMinuteLine( m_eMarket, &tagMinuteLine );
+				if( m_pDataCache[i].Time > 0 && tagMinuteLine.Volume > 0 ) {
+					Global_QueryClient.GetHandle()->OnMarketMinuteLine( m_eMarket, &tagMinuteLine );
+				}
 				m_nWriteSize = i;										///< 更新最新的写盘数据位置
-//if( ::strncmp( m_pszCode, "600000", 6 ) == 0 )::printf( "[WRITE], 600000, Time=%u, Open=%f, High=%f, Low=%f, %f, %I64d\n", tagMinuteLine.Time, tagMinuteLine.OpenPx, tagMinuteLine.HighPx, tagMinuteLine.LowPx, tagMinuteLine.ClosePx, tagMinuteLine.Volume );
 			}
 		}
 
