@@ -2,8 +2,11 @@
 #include "stdafx.h"
 #include <math.h>
 #include "DataClient.h"
+#include <string>
 #include <fstream>
+#include <sstream>
 #include <shellapi.h>
+#include <shlwapi.h>
 #include "../GlobalIO/GlobalIO.h"
 
 
@@ -535,6 +538,11 @@ bool Min1Sync::Sync()
 	return true;
 }
 
+bool Min1Sync::IsLoaded()
+{
+	return m_bSyned;
+}
+
 void* __stdcall Min1Sync::SyncThread( void* pSelf )
 {
 	SHELLEXECUTEINFO	tagExeInfo = { 0 };
@@ -627,6 +635,11 @@ int MinGenerator::Initialize()
 	return 0;
 }
 
+double MinGenerator::GetPxRate()
+{
+	return m_dPriceRate;
+}
+
 static bool s_bCloseMarket = false;
 
 int MinGenerator::Update( T_DATA& objData )
@@ -714,6 +727,12 @@ int MinGenerator::Update( T_DATA& objData )
 	}
 
 	return 0;
+}
+
+bool MinGenerator::AssignMin1( T_DATA& objData )
+{
+
+	return true;
 }
 
 void MinGenerator::DumpMinutes()
@@ -823,7 +842,7 @@ void MinGenerator::DumpMinutes()
 
 SecurityMinCache::SecurityMinCache( enum XDFMarket eMkID )
  : m_nSecurityCount( 0 ), m_pMinDataTable( NULL ), m_nAlloPos( 0 ), m_eMarketID( eMkID )
- , m_objSyncMin1( eMkID )
+ , m_objSyncMin1( eMkID ), m_bSyncDataLoaded( false )
 {
 	m_vctCode.clear();
 	m_objMapMinutes.clear();
@@ -869,13 +888,15 @@ void SecurityMinCache::Release()
 	m_nAlloPos = 0;
 	m_nSecurityCount = 0;
 	s_bCloseMarket = false;
+	m_bSyncDataLoaded = false;
 }
 
 void SecurityMinCache::ActivateDumper()
 {
 	if( false == m_oDumpThread.rbl_GetRunState() )
 	{
-		if( 0 > m_oDumpThread.StartThread( "SecurityMinCache::ActivateDumper()", DumpThread, this ) ) {
+		m_bSyncDataLoaded = false;
+		if( 0 > m_oDumpThread.StartThread( "SecurityMinCache::ActivateDumper()", DumpAndLoadThread, this ) ) {
 			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "SecurityMinCache::ActivateDumper() : failed 2 create minute line thread(1)" );
 		} else {
 			m_objSyncMin1.Sync();
@@ -962,10 +983,144 @@ int SecurityMinCache::UpdateSecurity( const tagCcComm_StockData5& refObj, unsign
 	return -1;
 }
 
-void* SecurityMinCache::DumpThread( void* pSelf )
+int SecurityMinCache::QueryRecords( int nReqID, unsigned int nBeginTime, unsigned int nEndTime )
+{
+	bool				bIsLast = false;
+	unsigned int		nCodeNumber = m_vctCode.size();
+
+	for( unsigned int n = 0; n < nCodeNumber && true == m_oDumpThread.rbl_GetRunState(); n++ )
+	{
+		T_MAP_MINUTES::iterator	it;
+
+		{
+			MLocalSection			section( &m_oLockData );
+			it = m_objMapMinutes.find( m_vctCode[n] );
+			if( it == m_objMapMinutes.end() ) {
+				continue;
+			}
+		}
+
+		//Global_QueryClient.GetHandle()->OnRspQryMinuteLine( (char)m_eMarketID, &m_tag1030Line, NULL, nReqID, bIsLast );
+	}
+
+	return -1;
+}
+
+bool ParseMin1Line( const char* pszLine, double dPxRate, MinGenerator::T_DATA& refData )
+{
+	unsigned int	nLastPos = 0;
+	unsigned int	nFieldNo = 0;
+	unsigned int	nLen = ::strlen( pszLine ) + 1;
+
+	for( int n = 0; n < nLen; n++ ) {
+		if( ',' == pszLine[n] || '\n' == pszLine[n] ) {
+			std::string	sFieldVal( pszLine + nLastPos, n-nLastPos );
+
+			switch( nFieldNo ) {
+			case 1:
+				refData.Time = ::atoi( sFieldVal.c_str() );
+				if( refData.Time <= 0 ) {
+					return false;
+				}
+				break;
+			case 2:
+				refData.OpenPx = (int)(::atof( sFieldVal.c_str() ) * dPxRate);
+				break;
+			case 3:
+				refData.HighPx = (int)(::atof( sFieldVal.c_str() ) * dPxRate);
+				break;
+			case 4:
+				refData.LowPx = (int)(::atof( sFieldVal.c_str() ) * dPxRate);
+				break;
+			case 5:
+				refData.ClosePx = (int)(::atof( sFieldVal.c_str() ) * dPxRate);
+				break;
+			case 7:
+				refData.Amount = ::atof( sFieldVal.c_str() );
+				break;
+			case 8:
+				refData.Volume = ::_atoi64( sFieldVal.c_str() );
+				break;
+			case 10:
+				refData.NumTrades = ::_atoi64( sFieldVal.c_str() );
+				break;
+			case 11:
+				refData.Voip = (int)(::atof( sFieldVal.c_str() ) * dPxRate);
+				break;
+			default:
+				break;
+			}
+
+			nFieldNo++;
+			nLastPos = n + 1;
+		}
+	}
+
+	return true;
+}
+
+void SecurityMinCache::LoadFromSyncDataFile()
+{
+	if( false == m_bSyncDataLoaded && true == m_objSyncMin1.IsLoaded() )
+	{
+		Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::LoadFromSyncDataFile() : MarketID = %d, loading...................", (int)m_eMarketID );
+
+		unsigned int			nYear = MDateTime::Now().DateToLong() / 10000;
+		unsigned int			nCodeNumber = m_vctCode.size();
+
+		for( unsigned int n = 0; n < nCodeNumber && true == m_oDumpThread.rbl_GetRunState(); n++ )
+		{
+			T_MAP_MINUTES::iterator	it;
+
+			{
+				MLocalSection				section( &m_oLockData );
+				it = m_objMapMinutes.find( m_vctCode[n] );
+				if( it == m_objMapMinutes.end() ) {
+					continue;
+				}
+			}
+
+			std::ifstream					objCSV;
+			const std::string&				sCode = it->first;
+			MinGenerator&					objMinGen = it->second;
+			char							pszFileName[128] = { 0 };
+			char							pszDataFilePath[1024] = { 0 };
+
+			::sprintf( pszFileName, "SSE\\MIN1_TODAY\\%s\\MIN%s_%u.csv", sCode.c_str(), sCode.c_str(), nYear );
+			::PathCombine( pszDataFilePath, Global_Option.GetSyncDataFolder(), pszFileName );
+
+			objCSV.open( pszDataFilePath, std::ios::binary|std::ios::in );
+			if( objCSV.is_open() ) {
+				for( int n = 0; n < 999; n++ )
+				{
+					char					pszLine[215] = { 0  };
+					MinGenerator::T_DATA	tagMin1Data = { 0 };
+
+					if( !objCSV.getline( pszLine, sizeof(pszLine) ) )	{
+						break;			///< EOF
+					}
+
+					if( n > 0 ) {
+						if( true == ParseMin1Line( pszLine, objMinGen.GetPxRate(), tagMin1Data ) )	{
+							//objMinGen.Update();
+						}
+					}
+				}
+
+				objCSV.close();
+			}
+
+		}
+
+		m_bSyncDataLoaded = true;				///< 标记为已经加载
+		Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::LoadFromSyncDataFile() : MarketID = %d, loaded ...................", (int)m_eMarketID );
+	}
+}
+
+void* SecurityMinCache::DumpAndLoadThread( void* pSelf )
 {
 	SecurityMinCache&		refData = *(SecurityMinCache*)pSelf;
-	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::DumpThread() : MarketID = %d, enter...................", (int)(refData.m_eMarketID) );
+	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::DumpAndLoadThread() : MarketID = %d, enter...................", (int)(refData.m_eMarketID) );
 
 	while( true == refData.m_oDumpThread.rbl_GetRunState() )
 	{
@@ -989,18 +1144,20 @@ void* SecurityMinCache::DumpThread( void* pSelf )
 
 				it->second.DumpMinutes();
 			}
+
+			refData.LoadFromSyncDataFile();		///< 加载今日同步的1分钟线数据文件
 		}
 		catch( std::exception& err )
 		{
-			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "SecurityMinCache::DumpThread() : exception : %s", err.what() );
+			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "SecurityMinCache::DumpAndLoadThread() : exception : %s", err.what() );
 		}
 		catch( ... )
 		{
-			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "SecurityMinCache::DumpThread() : unknow exception" );
+			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "SecurityMinCache::DumpAndLoadThread() : unknow exception" );
 		}
 	}
 
-	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::DumpThread() : MarketID = %d, misson complete!............", (int)(refData.m_eMarketID) );
+	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::DumpAndLoadThread() : MarketID = %d, misson complete!............", (int)(refData.m_eMarketID) );
 
 	return NULL;
 }

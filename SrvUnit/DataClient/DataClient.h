@@ -183,6 +183,12 @@ public:
 	 */
 	bool						Sync();
 
+	/**
+	 * @brief					1分钟线数据是否已经下载完成
+	 * @return					true					下载成功
+	 */
+	bool						IsLoaded();
+
 protected:
 	static void*	__stdcall	SyncThread( void* pSelf );
 
@@ -251,6 +257,18 @@ public:
 	 * @return					0						成功
 	 */
 	int							Update( T_DATA& objData );
+
+	/**
+	 * @brief					用1分钟线给对应的缓存块直接赋值(用于从1分钟同步文件加载)
+	 * @param[in]				objData					行情快照
+	 * @return					true					成功
+	 */
+	bool						AssignMin1( T_DATA& objData );
+
+	/**
+	 * @brief					获取放大倍数
+	 */
+	double						GetPxRate();
 
 	/**
 	 * @brief					生成分钟线并存盘
@@ -322,13 +340,30 @@ public:
 	int							UpdateSecurity( const tagCcComm_IndexData& refObj, unsigned int nDate, unsigned int nTime );
 	int							UpdateSecurity( const tagCcComm_StockData5& refObj, unsigned int nDate, unsigned int nTime );
 
-protected:
-	static void*	__stdcall	DumpThread( void* pSelf );
+	/**
+	 * @brief					查询今日的分1钟线记录并回调
+	 * @param[in]				nReqID			请求ID
+	 * @param[in]				nBeginTime		查询记录的开始时间
+	 * @param[in]				nEndTime		查询记录的结束时间
+	 * @return					查询条数
+	 */
+	int							QueryRecords( int nReqID, unsigned int nBeginTime, unsigned int nEndTime );
 
 protected:
-	Min1Sync					m_objSyncMin1;			///< 1分钟线同步对象
+	/**
+	 * @brief					从同步数据文件，加载今日的1分钟线数据
+	 */
+	void						LoadFromSyncDataFile();
+
+protected:
+	static void*	__stdcall	DumpAndLoadThread( void* pSelf );
+
+protected:
 	enum XDFMarket				m_eMarketID;			///< 市场编号
+	bool						m_bSyncDataLoaded;		///< 是否已经加载同步数据
+	Min1Sync					m_objSyncMin1;			///< 1分钟线同步对象
 	MThread						m_oDumpThread;			///< 分钟线落盘数据
+protected:
 	unsigned int				m_nAlloPos;				///< 缓存已经分配的位置
 	unsigned int				m_nSecurityCount;		///< 商品数量
 	MinGenerator::T_DATA*		m_pMinDataTable;		///< 分钟线缓存

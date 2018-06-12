@@ -78,7 +78,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				OutputFile="Debug\QuoteClientApi.dll"
+				OutputFile="E:\QWinQuoteClientApi_DEMO_TaiwanMrHuang\QuoteClientApi.dll"
 				LinkIncremental="2"
 				SuppressStartupBanner="true"
 				AdditionalLibraryDirectories="..\..\PublicLibrary\LibOutput"
