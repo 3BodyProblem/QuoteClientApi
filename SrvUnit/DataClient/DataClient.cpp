@@ -731,6 +731,50 @@ int MinGenerator::Update( T_DATA& objData )
 
 bool MinGenerator::AssignMin1( T_DATA& objData )
 {
+	if( NULL == m_pDataCache )
+	{
+		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "MinGenerator::AssignMin1() : invalid buffer pointer" );
+		return false;
+	}
+
+	if( 0 == objData.Time )
+	{
+		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "MinGenerator::AssignMin1() : invalid snap time" );
+		return false;
+	}
+
+	unsigned int		nMKTime = objData.Time;
+	unsigned int		nHH = nMKTime / 10000;
+	unsigned int		nMM = nMKTime % 10000 / 100;
+	int					nDataIndex = -1;
+
+	if( nMKTime >= 93000 && nMKTime < 130000 ) {
+		nDataIndex = 0;								///< 需要包含9:30这根线
+		if( 9 == nHH ) {
+			nDataIndex += (nMM - 30);				///< 9:30~9:59 = 30根
+		} else if( 10 == nHH ) {
+			nDataIndex += (30 + nMM);				///< 10:00~10:59 = 60根
+		} else if( 11 == nHH ) {
+			nDataIndex += (90 + nMM);				///< 11:00~11:30 = 31根
+		}
+	} else if( nMKTime > 130000 && nMKTime <= 150000 ) {
+		nDataIndex = 120;							///< 上午共121根
+		if( 13 == nHH ) {
+			nDataIndex += nMM;						///< 13:01~13:59 = 59根
+		} else if( 14 == nHH ) {
+			nDataIndex += (60 + nMM);				///< 14:00~14:59 = 60根
+		} else if( 15 == nHH ) {
+			nDataIndex += 120;						///< 15:00~15:00 = 1根
+		}
+	}
+
+	if( nDataIndex >= 241 || nDataIndex < 0 ) {
+		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "MinGenerator::AssignMin1() : out of range, index = %d", nDataIndex );
+		return false;
+	}
+
+	T_DATA*		pData = m_pDataCache + nDataIndex;
+	::memcpy( pData, &objData, sizeof(T_DATA) );
 
 	return true;
 }
@@ -1102,7 +1146,7 @@ void SecurityMinCache::LoadFromSyncDataFile()
 
 					if( n > 0 ) {
 						if( true == ParseMin1Line( pszLine, objMinGen.GetPxRate(), tagMin1Data ) )	{
-							//objMinGen.Update();
+							objMinGen.AssignMin1( tagMin1Data );
 						}
 					}
 				}
