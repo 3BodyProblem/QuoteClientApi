@@ -743,10 +743,15 @@ bool MinGenerator::AssignMin1( T_DATA& objData )
 		return false;
 	}
 
+	unsigned int		nNowT = MDateTime::Now().TimeToLong();
 	unsigned int		nMKTime = objData.Time;
 	unsigned int		nHH = nMKTime / 10000;
 	unsigned int		nMM = nMKTime % 10000 / 100;
 	int					nDataIndex = -1;
+
+	if( nNowT >= 150000 )	{
+		m_nWriteSize = 240;
+	}
 
 	if( nMKTime >= 93000 && nMKTime < 130000 ) {
 		nDataIndex = 0;								///< 需要包含9:30这根线
@@ -768,6 +773,10 @@ bool MinGenerator::AssignMin1( T_DATA& objData )
 		}
 	}
 
+	if( nDataIndex > m_nWriteSize ) {				///< 从同步文件恢复只恢复到当前待生成实时min1线的位置
+		return true;
+	}
+
 	if( nDataIndex >= 241 || nDataIndex < 0 ) {
 		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "MinGenerator::AssignMin1() : out of range, index = %d", nDataIndex );
 		return false;
@@ -779,10 +788,67 @@ bool MinGenerator::AssignMin1( T_DATA& objData )
 	return true;
 }
 
+int MinGenerator::CallBack4Query( int nReqID, unsigned int nBeginTime, unsigned int nEndTime, bool bIsLastCode )
+{
+	bool					bIsLastCB = false;				///< 是否为最后一笔回调
+	unsigned int			nLastLineIndex = 0;				///< 上一笔快照是索引值
+	T_MIN_LINE				tagLastLine = { 0 };			///< 上一笔快照的最后情况
+	T_MIN_LINE				tagLastLastLine = { 0 };		///< 上上笔快照的最后情况
+
+	if( NULL == m_pDataCache ) {
+		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "MinGenerator::CallBack4Query() : invalid buffer pointer 4 code:%s", m_pszCode );
+		return -1;
+	}
+
+	///< 从头遍历，直到最后一个收到的时间节点上
+	for( int i = 0; i <= m_nWriteSize; i++ )
+	{
+		T_Minute_Line		tagMinuteLine = { 0 };
+
+		if( true == bIsLastCode && (i + 1) == m_nDataSize ) {	bIsLastCB = true;	}
+		///< 收市，需要生成所有分钟线
+		if( true == s_bCloseMarket ) {	m_nDataSize = m_nMaxLineCount;	}
+		///< 以m_pDataCache[i].Time大于零为标识，进行"后续查询回调"
+		::memcpy( tagMinuteLine.Code, m_pszCode, 6 );
+		tagMinuteLine.Date = m_nDate;
+		if( i == 0 ) {											///< [ 上午121根分钟线，下午120根 ]
+			tagMinuteLine.Time = 93000;							///< 9:30~9:30 = 1根 (i:0)
+		} else if( i >= 1 && i <= 29 ) {
+			tagMinuteLine.Time = (930 + i) * 100;				///< 9:31~9:59 = 29根 (i:1--29)
+		} else if( i >= 30 && i <= 89 ) {
+			tagMinuteLine.Time = (1000 + (i-30)) * 100;			///< 10:00~10:59 = 60根 (i:30--89)
+		} else if( i >= 90 && i <= 120 ) {
+			tagMinuteLine.Time = (1100 + (i-90)) * 100;			///< 11:00~11:30 = 31根 (i:90--120)
+		} else if( i > 120 && i <= 179 ) {
+			tagMinuteLine.Time = (1300 + (i-120)) * 100;		///< 13:01~13:59 = 59根 (i:121--179)
+		} else if( i > 179 && i <= 239 ) {
+			tagMinuteLine.Time = (1400 + (i-180)) * 100;		///< 14:00~14:59 = 60根 (i:180--239)
+		} else if( i == 240 ) {
+			tagMinuteLine.Time = 150000;						///< 15:00~15:00 = 1根 (i:240)
+		}
+
+		if( tagMinuteLine.Time >= nBeginTime && tagMinuteLine.Time <= nEndTime )	{
+			tagMinuteLine.Amount = m_pDataCache[i].Amount;
+			tagMinuteLine.Volume = m_pDataCache[i].Volume;
+			tagMinuteLine.NumTrades = m_pDataCache[i].NumTrades;
+			tagMinuteLine.OpenPx = m_pDataCache[i].OpenPx / m_dPriceRate;
+			tagMinuteLine.HighPx = m_pDataCache[i].HighPx / m_dPriceRate;
+			tagMinuteLine.LowPx = m_pDataCache[i].LowPx / m_dPriceRate;
+			tagMinuteLine.ClosePx = m_pDataCache[i].ClosePx / m_dPriceRate;
+			tagMinuteLine.Voip = m_pDataCache[i].Voip / m_dPriceRate;
+			if( m_pDataCache[i].Time > 0 ) {
+				Global_QueryClient.GetHandle()->OnRspQryMinuteLine( (char)m_eMarket, &tagMinuteLine, NULL, nReqID, bIsLastCB );
+			}
+		}
+	}
+
+	return 0;
+}
+
 void MinGenerator::DumpMinutes()
 {
 	if( NULL == m_pDataCache ) {
-		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "inGenerator::DumpMinutes() : invalid buffer pointer 4 code:%s", m_pszCode );
+		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "MinGenerator::DumpMinutes() : invalid buffer pointer 4 code:%s", m_pszCode );
 		return;
 	}
 
@@ -800,7 +866,6 @@ void MinGenerator::DumpMinutes()
 		}
 		///< 跳过已经落盘过的时间节点，以m_pDataCache[i].Time大于零为标识，进行"后续写入"
 		if( i > m_nWriteSize ) {
-			char				pszLine[1024] = { 0 };
 			T_Minute_Line		tagMinuteLine = { 0 };
 
 			::memcpy( tagMinuteLine.Code, m_pszCode, 6 );
@@ -834,8 +899,7 @@ void MinGenerator::DumpMinutes()
 					Global_QueryClient.GetHandle()->OnMarketMinuteLine( m_eMarket, &tagMinuteLine );
 				}
 
-				m_pDataCache[i].Time = 0;								///< 把时间清零，即，标记为已经落盘
-				m_nWriteSize = i;										///< 更新最新的写盘数据位置
+				m_nWriteSize = i;									///< 更新最新的写盘数据位置
 			} else {		////////////////////////< 处理9:30后的分钟线计算与落盘的情况 [1. 前面无成交的情况 2.前面是连续成交的情况]
 				if( i - nLastLineIndex > 1 ) {	///< 如果前面n分钟内无成交，则开盘最高最低等于ClosePx
 					tagMinuteLine.OpenPx = tagLastLine.ClosePx;
@@ -855,6 +919,14 @@ void MinGenerator::DumpMinutes()
 				}
 
 				if( m_pDataCache[i].Time > 0 && tagMinuteLine.Volume > 0 ) {
+					m_pDataCache[i].OpenPx = (int)(tagMinuteLine.OpenPx * m_dPriceRate);
+					m_pDataCache[i].HighPx = (int)(tagMinuteLine.HighPx * m_dPriceRate);
+					m_pDataCache[i].LowPx = (int)(tagMinuteLine.LowPx * m_dPriceRate);
+					m_pDataCache[i].ClosePx = (int)(tagMinuteLine.ClosePx * m_dPriceRate);
+					m_pDataCache[i].Voip = (int)(tagMinuteLine.Voip * m_dPriceRate);
+					m_pDataCache[i].Amount = tagMinuteLine.Amount;
+					m_pDataCache[i].Volume = tagMinuteLine.Volume;
+					m_pDataCache[i].NumTrades = tagMinuteLine.NumTrades;
 					Global_QueryClient.GetHandle()->OnMarketMinuteLine( m_eMarket, &tagMinuteLine );
 				}
 				m_nWriteSize = i;										///< 更新最新的写盘数据位置
@@ -1029,7 +1101,7 @@ int SecurityMinCache::UpdateSecurity( const tagCcComm_StockData5& refObj, unsign
 
 int SecurityMinCache::QueryRecords( int nReqID, unsigned int nBeginTime, unsigned int nEndTime )
 {
-	bool				bIsLast = false;
+	bool				bIsLastCode = false;
 	unsigned int		nCodeNumber = m_vctCode.size();
 
 	for( unsigned int n = 0; n < nCodeNumber && true == m_oDumpThread.rbl_GetRunState(); n++ )
@@ -1044,7 +1116,11 @@ int SecurityMinCache::QueryRecords( int nReqID, unsigned int nBeginTime, unsigne
 			}
 		}
 
-		//Global_QueryClient.GetHandle()->OnRspQryMinuteLine( (char)m_eMarketID, &m_tag1030Line, NULL, nReqID, bIsLast );
+		if( n + 1 == nCodeNumber ) {
+			bIsLastCode = true;
+		}
+
+		it->second.CallBack4Query( nReqID, nBeginTime, nEndTime, bIsLastCode );
 	}
 
 	return -1;
@@ -1307,70 +1383,14 @@ void* STDCALL MQueryClient::QueryThreadFunc( void* pParam )
 			MThread::Sleep( 1000 );
 			if( true == pSelf->m_bIsQuerying )													///< 有分钟线的查询请求
 			{
-/*				bool						bQueryLast = false;
-				unsigned int				nToday = MDateTime::Now().DateToLong();
-				unsigned int				nLastTime = 0;
-				std::string					sLastCode = "";
-				TMAP_60MINU_LINE::iterator	itBegin = NULL;
-				TMAP_60MINU_LINE::iterator	itEnd = NULL;
-
-				if( XDF_SH == pSelf->m_eReqMkID && pSelf->m_nWareCount4SHL1 > 0 ) {
-					itBegin = pSelf->m_mapMinuteLine4SHL1.begin();
-					itEnd = pSelf->m_mapMinuteLine4SHL1.end();
-					bQueryLast = true;
-				} else if( XDF_SZ == pSelf->m_eReqMkID && pSelf->m_nWareCount4SZL1 > 0 ) {
-					itBegin = pSelf->m_mapMinuteLine4SZL1.begin();
-					itEnd = pSelf->m_mapMinuteLine4SZL1.end();
-					bQueryLast = true;
-				}
-
-				while( true == bQueryLast )
+				if( XDF_SH == pSelf->m_eReqMkID && pSelf->m_nWareCount4SHL1 > 0 )
 				{
-					Minute60LineStatus&	refLine = itEnd->second;
-
-					if( refLine.m_nDate1 != nToday ) {
-						if( itEnd-- == itBegin ) {
-							pSelf->m_bIsQuerying = false;
-							break;
-						}
-
-						continue;
-					}
-
-					nLastTime = 103000;
-					if( refLine.m_tag1300Line.Date != nToday ) {
-						nLastTime = 130000;
-					} else if( refLine.m_tag1400Line.Date != nToday ) {
-						nLastTime = 140000;
-					} else if( refLine.m_tag1500Line.Date != nToday ) {
-						nLastTime = 150000;
-					}
-
-					sLastCode = refLine.Code;
-					break;
+					pSelf->m_obj1MinCache4SHL1.QueryRecords( pSelf->m_nRequestID, pSelf->m_nBeginTime, pSelf->m_nEndTime );
 				}
-
-				if( XDF_SH == pSelf->m_eReqMkID && pSelf->m_nWareCount4SHL1 > 0 && true == pSelf->m_bIsQuerying && true == bQueryLast )
+				else if( XDF_SZ == pSelf->m_eReqMkID && pSelf->m_nWareCount4SZL1 > 0 )
 				{
-					for( TMAP_60MINU_LINE::iterator it = pSelf->m_mapMinuteLine4SHL1.begin(); it != pSelf->m_mapMinuteLine4SHL1.end(); it++ )
-					{
-						it->second.DoQueryResponse( 0, pSelf->m_nRequestID, it->first==sLastCode && nLastTime == 103000 );
-						it->second.DoQueryResponse( 1, pSelf->m_nRequestID, it->first==sLastCode && nLastTime == 130000 );
-						it->second.DoQueryResponse( 2, pSelf->m_nRequestID, it->first==sLastCode && nLastTime == 140000 );
-						it->second.DoQueryResponse( 3, pSelf->m_nRequestID, it->first==sLastCode && nLastTime == 150000 );
-					}
+					pSelf->m_obj1MinCache4SZL1.QueryRecords( pSelf->m_nRequestID, pSelf->m_nBeginTime, pSelf->m_nEndTime );
 				}
-				else if( XDF_SZ == pSelf->m_eReqMkID && pSelf->m_nWareCount4SZL1 > 0 && true == pSelf->m_bIsQuerying && true == bQueryLast )
-				{
-					for( TMAP_60MINU_LINE::iterator it = pSelf->m_mapMinuteLine4SZL1.begin(); it != pSelf->m_mapMinuteLine4SZL1.end(); it++ )
-					{
-						it->second.DoQueryResponse( 0, pSelf->m_nRequestID, it->first==sLastCode && nLastTime == 103000 );
-						it->second.DoQueryResponse( 1, pSelf->m_nRequestID, it->first==sLastCode && nLastTime == 130000 );
-						it->second.DoQueryResponse( 2, pSelf->m_nRequestID, it->first==sLastCode && nLastTime == 140000 );
-						it->second.DoQueryResponse( 3, pSelf->m_nRequestID, it->first==sLastCode && nLastTime == 150000 );
-					}
-				}
-*/
 			}
 		}
 		catch( std::exception& err )

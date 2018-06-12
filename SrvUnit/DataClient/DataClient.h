@@ -274,6 +274,17 @@ public:
 	 * @brief					生成分钟线并存盘
 	 */
 	void						DumpMinutes();
+
+	/**
+	 * @brief					查询今日的分1钟线记录并回调
+	 * @param[in]				nReqID			请求ID
+	 * @param[in]				nBeginTime		查询记录的开始时间
+	 * @param[in]				nEndTime		查询记录的结束时间
+	 * @param[in]				bIsLastCode		最后一条个商品Code
+	 * @return					查询条数
+	 */
+	int							CallBack4Query( int nReqID, unsigned int nBeginTime, unsigned int nEndTime, bool bIsLastCode );
+
 protected:
 	double						m_dAmountBefore930;		///< 9:30前的金额
 	unsigned __int64			m_nVolumeBefore930;		///< 9:30前的量
