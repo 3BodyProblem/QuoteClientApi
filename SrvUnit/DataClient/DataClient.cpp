@@ -1120,7 +1120,17 @@ int SecurityMinCache::QueryRecords( int nReqID, unsigned int nBeginTime, unsigne
 			bIsLastCode = true;
 		}
 
-		it->second.CallBack4Query( nReqID, nBeginTime, nEndTime, bIsLastCode );
+		unsigned int				nCode = ::atoi( it->first.c_str() );
+
+		if( XDF_SH == m_eMarketID ) {
+			if( (nCode>=1 && nCode<=999) || (nCode>=600000&&nCode<=609999) || (nCode>=510000&&nCode<=519999) ) {
+				it->second.CallBack4Query( nReqID, nBeginTime, nEndTime, bIsLastCode );
+			}
+		} else if( XDF_SZ == m_eMarketID ) {
+			if( (nCode>=399000 && nCode<=399999) || (nCode>=1&&nCode<=9999) || (nCode>=159000&&nCode<=159999) || (nCode>=300000&&nCode<=300999) ) {
+				it->second.CallBack4Query( nReqID, nBeginTime, nEndTime, bIsLastCode );
+			}
+		}
 	}
 
 	return -1;
