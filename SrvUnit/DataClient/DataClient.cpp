@@ -805,9 +805,7 @@ int MinGenerator::CallBack4Query( int nReqID, unsigned int nBeginTime, unsigned 
 	{
 		T_Minute_Line		tagMinuteLine = { 0 };
 
-		if( true == bIsLastCode && (i + 1) == m_nDataSize ) {	bIsLastCB = true;	}
-		///< 收市，需要生成所有分钟线
-		if( true == s_bCloseMarket ) {	m_nDataSize = m_nMaxLineCount;	}
+		if( true == bIsLastCode && i == m_nWriteSize ) {	bIsLastCB = true;	}
 		///< 以m_pDataCache[i].Time大于零为标识，进行"后续查询回调"
 		::memcpy( tagMinuteLine.Code, m_pszCode, 6 );
 		tagMinuteLine.Date = m_nDate;
@@ -1003,6 +1001,7 @@ void SecurityMinCache::Release()
 
 	m_nAlloPos = 0;
 	m_nSecurityCount = 0;
+	m_sLastValidCode = "";
 	s_bCloseMarket = false;
 	m_bSyncDataLoaded = false;
 }
@@ -1036,6 +1035,23 @@ int SecurityMinCache::NewSecurity( enum XDFMarket eMarket, const std::string& sC
 		return -2;
 	}
 
+	bool					bValidCode = false;
+	unsigned int			nCode = ::atoi( sCode.c_str() );
+
+	if( XDF_SH == m_eMarketID ) {
+		if( (nCode>=1 && nCode<=999) || (nCode>=600000&&nCode<=609999) || (nCode>=510000&&nCode<=519999) ) {
+			bValidCode = true;
+		}
+	} else if( XDF_SZ == m_eMarketID ) {
+		if( (nCode>=399000 && nCode<=399999) || (nCode>=1&&nCode<=9999) || (nCode>=159000&&nCode<=159999) || (nCode>=300000&&nCode<=300999) ) {
+			bValidCode = true;
+		}
+	}
+
+	if( false == bValidCode ) {
+		return 0;
+	}
+
 	m_objMapMinutes[sCode] = MinGenerator( eMarket, nDate, sCode, dPriceRate, objData, m_pMinDataTable + m_nAlloPos );
 	if( 0 != m_objMapMinutes[sCode].Initialize() )
 	{
@@ -1045,6 +1061,7 @@ int SecurityMinCache::NewSecurity( enum XDFMarket eMarket, const std::string& sC
 
 	m_nAlloPos += 241;
 	m_vctCode.push_back( sCode );
+	m_sLastValidCode = sCode;
 
 	return 0;
 }
@@ -1116,7 +1133,7 @@ int SecurityMinCache::QueryRecords( int nReqID, unsigned int nBeginTime, unsigne
 			}
 		}
 
-		if( n + 1 == nCodeNumber ) {
+		if( it->first == m_sLastValidCode ) {
 			bIsLastCode = true;
 		}
 

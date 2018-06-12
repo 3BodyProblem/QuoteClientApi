@@ -374,6 +374,7 @@ protected:
 	bool						m_bSyncDataLoaded;		///< 是否已经加载同步数据
 	Min1Sync					m_objSyncMin1;			///< 1分钟线同步对象
 	MThread						m_oRealCbAndLoadThread;	///< 分钟线实时回调和今日内历史数据加载线程
+	std::string					m_sLastValidCode;		///< 最后一个代码，用于计算是否已经最后一个查询回调商品
 protected:
 	unsigned int				m_nAlloPos;				///< 缓存已经分配的位置
 	unsigned int				m_nSecurityCount;		///< 商品数量
