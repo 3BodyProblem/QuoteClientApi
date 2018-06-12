@@ -991,7 +991,7 @@ void SecurityMinCache::Release()
 {
 	if( NULL != m_pMinDataTable )
 	{
-		m_oDumpThread.StopThread();
+		m_oRealCbAndLoadThread.StopThread();
 
 		MLocalSection			section( &m_oLockData );
 
@@ -1009,10 +1009,10 @@ void SecurityMinCache::Release()
 
 void SecurityMinCache::ActivateDumper()
 {
-	if( false == m_oDumpThread.rbl_GetRunState() )
+	if( false == m_oRealCbAndLoadThread.rbl_GetRunState() )
 	{
 		m_bSyncDataLoaded = false;
-		if( 0 > m_oDumpThread.StartThread( "SecurityMinCache::ActivateDumper()", DumpAndLoadThread, this ) ) {
+		if( 0 > m_oRealCbAndLoadThread.StartThread( "SecurityMinCache::ActivateDumper()", RealCallbackAndLoadThread, this ) ) {
 			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "SecurityMinCache::ActivateDumper() : failed 2 create minute line thread(1)" );
 		} else {
 			m_objSyncMin1.Sync();
@@ -1104,7 +1104,7 @@ int SecurityMinCache::QueryRecords( int nReqID, unsigned int nBeginTime, unsigne
 	bool				bIsLastCode = false;
 	unsigned int		nCodeNumber = m_vctCode.size();
 
-	for( unsigned int n = 0; n < nCodeNumber && true == m_oDumpThread.rbl_GetRunState(); n++ )
+	for( unsigned int n = 0; n < nCodeNumber && true == m_oRealCbAndLoadThread.rbl_GetRunState(); n++ )
 	{
 		T_MAP_MINUTES::iterator	it;
 
@@ -1198,7 +1198,7 @@ void SecurityMinCache::LoadFromSyncDataFile()
 		unsigned int			nYear = MDateTime::Now().DateToLong() / 10000;
 		unsigned int			nCodeNumber = m_vctCode.size();
 
-		for( unsigned int n = 0; n < nCodeNumber && true == m_oDumpThread.rbl_GetRunState(); n++ )
+		for( unsigned int n = 0; n < nCodeNumber && true == m_oRealCbAndLoadThread.rbl_GetRunState(); n++ )
 		{
 			T_MAP_MINUTES::iterator	it;
 
@@ -1247,12 +1247,12 @@ void SecurityMinCache::LoadFromSyncDataFile()
 	}
 }
 
-void* SecurityMinCache::DumpAndLoadThread( void* pSelf )
+void* SecurityMinCache::RealCallbackAndLoadThread( void* pSelf )
 {
 	SecurityMinCache&		refData = *(SecurityMinCache*)pSelf;
-	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::DumpAndLoadThread() : MarketID = %d, enter...................", (int)(refData.m_eMarketID) );
+	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::RealCallbackAndLoadThread() : MarketID = %d, enter...................", (int)(refData.m_eMarketID) );
 
-	while( true == refData.m_oDumpThread.rbl_GetRunState() )
+	while( true == refData.m_oRealCbAndLoadThread.rbl_GetRunState() )
 	{
 		MThread::Sleep( 1000 * 3 );
 
@@ -1260,7 +1260,7 @@ void* SecurityMinCache::DumpAndLoadThread( void* pSelf )
 		{
 			unsigned int	nCodeNumber = refData.m_vctCode.size();
 
-			for( unsigned int n = 0; n < nCodeNumber && true == refData.m_oDumpThread.rbl_GetRunState(); n++ )
+			for( unsigned int n = 0; n < nCodeNumber && true == refData.m_oRealCbAndLoadThread.rbl_GetRunState(); n++ )
 			{
 				T_MAP_MINUTES::iterator	it;
 
@@ -1272,22 +1272,32 @@ void* SecurityMinCache::DumpAndLoadThread( void* pSelf )
 					}
 				}
 
-				it->second.DumpMinutes();
+				unsigned int				nCode = ::atoi( it->first.c_str() );
+
+				if( XDF_SH == refData.m_eMarketID ) {
+					if( (nCode>=1 && nCode<=999) || (nCode>=600000&&nCode<=609999) || (nCode>=510000&&nCode<=519999) ) {
+						it->second.DumpMinutes();
+					}
+				} else if( XDF_SZ == refData.m_eMarketID ) {
+					if( (nCode>=399000 && nCode<=399999) || (nCode>=1&&nCode<=9999) || (nCode>=159000&&nCode<=159999) || (nCode>=300000&&nCode<=300999) ) {
+						it->second.DumpMinutes();
+					}
+				}
 			}
 
 			refData.LoadFromSyncDataFile();		///< 加载今日同步的1分钟线数据文件
 		}
 		catch( std::exception& err )
 		{
-			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "SecurityMinCache::DumpAndLoadThread() : exception : %s", err.what() );
+			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "SecurityMinCache::RealCallbackAndLoadThread() : exception : %s", err.what() );
 		}
 		catch( ... )
 		{
-			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "SecurityMinCache::DumpAndLoadThread() : unknow exception" );
+			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "SecurityMinCache::RealCallbackAndLoadThread() : unknow exception" );
 		}
 	}
 
-	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::DumpAndLoadThread() : MarketID = %d, misson complete!............", (int)(refData.m_eMarketID) );
+	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::RealCallbackAndLoadThread() : MarketID = %d, misson complete!............", (int)(refData.m_eMarketID) );
 
 	return NULL;
 }

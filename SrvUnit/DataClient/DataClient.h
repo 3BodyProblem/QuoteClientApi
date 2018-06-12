@@ -367,13 +367,13 @@ protected:
 	void						LoadFromSyncDataFile();
 
 protected:
-	static void*	__stdcall	DumpAndLoadThread( void* pSelf );
+	static void*	__stdcall	RealCallbackAndLoadThread( void* pSelf );
 
 protected:
 	enum XDFMarket				m_eMarketID;			///< 市场编号
 	bool						m_bSyncDataLoaded;		///< 是否已经加载同步数据
 	Min1Sync					m_objSyncMin1;			///< 1分钟线同步对象
-	MThread						m_oDumpThread;			///< 分钟线落盘数据
+	MThread						m_oRealCbAndLoadThread;	///< 分钟线实时回调和今日内历史数据加载线程
 protected:
 	unsigned int				m_nAlloPos;				///< 缓存已经分配的位置
 	unsigned int				m_nSecurityCount;		///< 商品数量
