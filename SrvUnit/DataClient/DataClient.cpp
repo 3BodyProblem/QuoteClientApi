@@ -1388,6 +1388,7 @@ int STDCALL MQueryClient::QueryMinuteLines( enum XDFMarket eMkID, unsigned int n
 
 	if( XDF_SH == eMkID )
 	{
+		m_eReqMkID = eMkID;
 		m_bIsQuerying = true;
 		m_nRequestID = nRequestID;
 		m_nBeginTime = nBeginTime;
@@ -1397,6 +1398,7 @@ int STDCALL MQueryClient::QueryMinuteLines( enum XDFMarket eMkID, unsigned int n
 	}
 	else if( XDF_SZ == eMkID )
 	{
+		m_eReqMkID = eMkID;
 		m_bIsQuerying = true;
 		m_nRequestID = nRequestID;
 		m_nBeginTime = nBeginTime;
