@@ -529,7 +529,7 @@ bool Min1Sync::Sync()
 	if( false == m_oSyncThread.rbl_GetRunState() )
 	{
 		m_bSyned = false;
-		if( 0 != m_oSyncThread.StartThread( "QuoteQueryClient::Min1Sync::Sync()", SyncThread, this ) ) {
+		if( 0 > m_oSyncThread.StartThread( "QuoteQueryClient::Min1Sync::Sync()", SyncThread, this ) ) {
 			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "Min1Sync::Sync() : failed 2 create minute line sync thread" );
 			return false;
 		}
@@ -773,7 +773,7 @@ bool MinGenerator::AssignMin1( T_DATA& objData )
 		}
 	}
 
-	if( nDataIndex > m_nWriteSize ) {				///< 从同步文件恢复只恢复到当前待生成实时min1线的位置
+	if( nDataIndex >= m_nWriteSize ) {				///< 从同步文件恢复只恢复到当前待生成实时min1线的位置
 		return true;
 	}
 
@@ -915,7 +915,6 @@ void MinGenerator::DumpMinutes()
 					tagMinuteLine.Volume = tagLastLine.Volume - tagLastLastLine.Volume;
 					tagMinuteLine.NumTrades = tagLastLine.NumTrades - tagLastLastLine.NumTrades;
 				}
-
 				if( m_pDataCache[i].Time > 0 && tagMinuteLine.Volume > 0 ) {
 					m_pDataCache[i].OpenPx = (int)(tagMinuteLine.OpenPx * m_dPriceRate);
 					m_pDataCache[i].HighPx = (int)(tagMinuteLine.HighPx * m_dPriceRate);
