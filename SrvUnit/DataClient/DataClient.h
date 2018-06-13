@@ -511,9 +511,15 @@ public:
 	virtual ~MPrimeClient();
 
 public:
-	int		STDCALL		ReqFuncData(int FuncNo, void* wParam, void* lParam);
-protected:
-private:
+	/**
+	 * @brief			请求查询数据
+	 * @param[in]		FuncNo			100:同步方式查询某市场信息XDFAPI_MarketStatusInfo
+										101:异步方式查询某市场信息XDFAPI_MarketStatusInfo
+										102:获取沪、深的停牌标记
+										103:获取中金市场码表 (pParam, 为空，则return码表中的商品数量)
+	 */
+	int		STDCALL		ReqFuncData( int FuncNo, void* wParam, void* lParam );
+
 };
 
 

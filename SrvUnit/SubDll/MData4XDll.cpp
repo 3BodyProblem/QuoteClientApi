@@ -166,6 +166,58 @@ int		MData4XDll::outer_GetMarketInfo(char* pszInBuf, int32_t nInBytes)
 	return oMSW.GetOffset();
 }
 
+int MData4XDll::outer_GetCodeTableEx( char* pszInBuf, int32_t nInBytes, int32_t& nCount )
+{
+	unsigned int MsgType =0;
+	int sizeComNameTable=0;
+	int sizeXDFNameTable=0;
+	inner_GetNameTableInfoEx(MsgType, sizeComNameTable, sizeXDFNameTable);
+
+	if( 0 == sizeComNameTable && 0 == sizeXDFNameTable ) {
+		return 0;
+	}
+
+	tagCcComm_MarketInfoHead			markethead;
+	char								tempbuf[81920];
+	tagCcComm_MarketInfoDetail * pMarketdetail = (tagCcComm_MarketInfoDetail *)tempbuf;
+	int iret = m_p4XDll->GetMarketInfo( &markethead, pMarketdetail, sizeof(tempbuf)/sizeof(tagCcComm_MarketInfoDetail) );
+	if (iret <0)
+	{
+		return iret;
+	}
+
+	nCount = markethead.WareCount;
+	if (0 == pszInBuf || 0 == nInBytes)		//通过nCount返回码表个数
+	{
+		return 1;
+	}
+
+	MStreamWrite oMSW(pszInBuf, nInBytes);
+	char	namebuf[2048]={0};
+
+	int m=0;
+	while (m < nCount)
+	{
+		memset(tempbuf, 0, sizeof(tempbuf));
+		void * pNameTb = (void *)tempbuf;
+		iret = inner_GetNameTable(m, pNameTb, sizeof(tempbuf)/sizeComNameTable);
+		if (iret <0)
+		{
+			return -1;
+		}
+		for (int i=0; i<iret; i++)
+		{
+			pNameTb= (void*)(tempbuf+sizeComNameTable*i);
+			inner_TransNameTableEx(pNameTb, namebuf);
+			oMSW.PutMsg(MsgType, namebuf, sizeXDFNameTable);
+		}
+
+		m += iret;
+	}
+	oMSW.Detach();
+	return oMSW.GetOffset();
+}
+
 int		MData4XDll::outer_GetCodeTable(char* pszInBuf, int32_t nInBytes, int32_t& nCount)
 {
 	unsigned int MsgType =0;

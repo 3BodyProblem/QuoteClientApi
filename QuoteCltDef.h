@@ -475,6 +475,30 @@ typedef struct
 	unsigned long					LotFactor;				//手比率
 }XDFAPI_NameTableCnf;
 
+//[MsgType = 8 MsgLen= x]商品期货码表扩展(新结构定义)
+typedef struct  
+{
+	uint8_t							Market;					///< XDFMarket取值
+	uint8_t							SecKind;				///< 证券类型[见文档]
+	char							Code[20];				///< 商品代码
+	char							Name[40];				///< 商品名称
+	unsigned long					LotFactor;				///< 手比率
+	int								LeavesQty;				// 未平仓合约数 = 昨持仓 单位是(张)
+	unsigned char					ObjectMId;				// 上海期货 0  大连期货 1  郑州期货 2 上海期权 3  大连期权 4  郑州期权 5
+	char							UnderlyingCode[20];		// 标的证券代码
+	char							PriceLimitType;			// 涨跌幅限制类型(N 有涨跌幅)(R 无涨跌幅)
+	unsigned long					UpLimit;				// 当日期权涨停价格(精确到厘) //[*放大倍数]
+	unsigned long					DownLimit;				// 当日期权跌停价格(精确到厘) //[*放大倍数]
+	int								LotSize;				// 一手等于几张合约
+	unsigned long					ContractMult;			// 合约乘数
+	unsigned long					XqPrice;				// 行权价格(精确到厘) //[*放大倍数] 
+	int								StartDate;				// 首个交易日(YYYYMMDD)
+	int								EndDate;				// 最后交易日(YYYYMMDD)
+	int								XqDate;					// 行权日(YYYYMM)
+	int								DeliveryDate;			// 交割日(YYYYMMDD)
+	int								ExpireDate;				// 到期日(YYYYMMDD)
+}XDFAPI_NameTableCnfEx;
+
 //[MsgType =26 MsgLen=198]商品期货快照
 typedef struct  
 {

@@ -96,6 +96,11 @@ public:
 	virtual int		outer_GetLastMarketDataAll(char* pszInBuf, int32_t nInBytes);
 
 	/**
+	 * @brief		取得全部的码表信息(扩展，新结构定义)
+	 */
+	int				outer_GetCodeTableEx( char* pszInBuf, int32_t nInBytes, int32_t& nCount );
+
+	/**
 	 * @brief		取得全部的码表信息
 	 */
 	virtual int		outer_GetCodeTable(char* pszInBuf, int32_t nInBytes, int32_t& nCount);
@@ -127,6 +132,15 @@ protected:
 	virtual void	inner_GetNameTableInfo(unsigned int& MsgType, int& sizeComNameTable, int& sizeXDFNameTable) = 0;
 
 	/**
+	 * @brief		接口：取得各对应市场的码表(扩展，新结构定义)大小信息
+	 */
+	virtual void	inner_GetNameTableInfoEx(unsigned int& MsgType, int& sizeComNameTable, int& sizeXDFNameTable)
+	{
+		sizeComNameTable = 0;
+		sizeXDFNameTable = 0;
+	};
+
+	/**
 	 * @brief		接口：取得各对应市场的码表内存块
 	 */
 	virtual int		inner_GetNameTable(unsigned short dwStartNo, void * pData, int nCount) = 0;
@@ -135,6 +149,14 @@ protected:
 	 * @brief		接口：取得各对应市场的快照内存块
 	 */
 	virtual int		inner_GetStock(unsigned short dwStartNo, void * pData, int nCount) = 0;
+
+	/**
+	 * @brief		接口：转换传输的码表结构至qwin的码表扩展结构（新结构定义）
+	 */
+	virtual int		inner_TransNameTableEx( void * pNameTb, char* poutbuf)
+	{
+		return -1;
+	};
 
 	/**
 	 * @brief		接口：转换传输的码表结构至qwin的码表结构

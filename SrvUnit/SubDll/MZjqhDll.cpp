@@ -150,8 +150,6 @@ if( strncmp( pData->Code, "IH1805", 6 ) == 0 ) {
 	Global_DataIO.PutData( &pkghead, outbuf, oMSW.GetOffset() );
 }
 
-
-
 int		MZjqhDll::inner_TransNameTable( void * pData, char* poutbuf)
 {
 	tagCcComm_CffexNameTable* pNameTb = (tagCcComm_CffexNameTable*)pData;

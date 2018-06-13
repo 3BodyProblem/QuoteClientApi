@@ -1915,7 +1915,7 @@ MPrimeClient::~MPrimeClient()
 
 int		STDCALL		MPrimeClient::ReqFuncData(int FuncNo, void* wParam, void* lParam)
 {
-	if (FuncNo ==100)		//获取某个市场的市场日期和市场时间(参数:uint8*,   XDFAPI_MarketStatusInfo*)
+	if (FuncNo ==100)			//获取某个市场的市场日期和市场时间(参数:uint8*,   XDFAPI_MarketStatusInfo*)
 	{
 		uint8_t * pMarket = (uint8_t*)wParam;
 		XDFAPI_MarketStatusInfo* pInfo = (XDFAPI_MarketStatusInfo*)lParam;
@@ -1933,7 +1933,7 @@ int		STDCALL		MPrimeClient::ReqFuncData(int FuncNo, void* wParam, void* lParam)
 			}
 		}
 	}
-	else if (FuncNo ==101)	//获取某个市场的市场日期和市场时间(参数:uint8*,   XDFAPI_MarketStatusInfo*)
+	else if (FuncNo ==101)		//获取某个市场的市场日期和市场时间(参数:uint8*,   XDFAPI_MarketStatusInfo*)
 	{
 		uint8_t * pMarket = (uint8_t*)wParam;
 		XDFAPI_MarketStatusInfo* pInfo = (XDFAPI_MarketStatusInfo*)lParam;
@@ -1951,7 +1951,7 @@ int		STDCALL		MPrimeClient::ReqFuncData(int FuncNo, void* wParam, void* lParam)
 			}
 		}
 	}
-	else if( FuncNo == 102 )
+	else if( FuncNo == 102 )	// 获取沪、深停牌标记
 	{
 		int						nErrorCode = 0;
 		int						nCodeCount = 0;
@@ -1988,6 +1988,26 @@ int		STDCALL		MPrimeClient::ReqFuncData(int FuncNo, void* wParam, void* lParam)
 
 		oMSW.Detach();
 		return oMSW.GetOffset();
+	}
+	else if( 103 == FuncNo )	// 获取中金期货市场码表(用新的格式)
+	{
+		int						nCodeCount = 0;
+		int						nErrorCode = 0;
+		unsigned int			nOutputBufLen = 0;
+		char*					pOutputBuf = (char*)lParam;
+		XDFAPI_ReqFuncParam*	pParam = (XDFAPI_ReqFuncParam*)wParam;
+
+		if( NULL != lParam ) {
+			nOutputBufLen = pParam->nBufLen;
+		}
+
+		nErrorCode = Global_DllMgr.GetCodeTable( pParam->MkID, pOutputBuf, nOutputBufLen, nCodeCount );		///< 先获取一下商品数量
+		if( nErrorCode < 0 )
+		{
+			return -101;
+		}
+
+		return nCodeCount;
 	}
 
 	return 0;

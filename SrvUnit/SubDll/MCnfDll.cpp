@@ -20,6 +20,13 @@ void	MCnfDll::inner_GetStockInfo(unsigned int& MsgType, int& sizeComStockData, i
 	sizeXDFStockData = sizeof(XDFAPI_CNFutureData);
 }
 
+void	MCnfDll::inner_GetNameTableInfoEx(unsigned int& MsgType, int& sizeComNameTable, int& sizeXDFNameTable)
+{
+	MsgType = 8;
+	sizeComNameTable = sizeof(tagCcComm_CsfexFutOptNameTable);
+	sizeXDFNameTable = sizeof(XDFAPI_NameTableCnfEx);
+}
+
 void	MCnfDll::inner_GetNameTableInfo(unsigned int& MsgType, int& sizeComNameTable, int& sizeXDFNameTable)
 {
 	MsgType = 7;
@@ -144,8 +151,40 @@ void	MCnfDll::outer_OnPushData(unsigned char ChildType, const char* pszbuf, unsi
 	memset(&pkghead, 0, sizeof(XDFAPI_PkgHead));
 	pkghead.MarketID = XDF_CNF;
 	pkghead.PkgSize = oMSW.GetOffset();
-	
+
 	Global_DataIO.PutData( &pkghead, outbuf, oMSW.GetOffset());
+}
+
+int		MCnfDll::inner_TransNameTableEx( void * pData, char* poutbuf)
+{
+	char							tempbuf[200] = { 0 };
+	tagCcComm_CsfexFutOptNameTable* pNameTb = (tagCcComm_CsfexFutOptNameTable*)pData;
+	XDFAPI_NameTableCnfEx*			pTable = (XDFAPI_NameTableCnfEx*)(tempbuf);
+
+	pTable->Market = XDF_CNF;
+	pTable->SecKind = pNameTb->Type;
+	memcpy(pTable->Code,pNameTb->Code, 20);
+	memcpy(pTable->Name, pNameTb->Name, 40);
+	pTable->LotFactor = pNameTb->LotFactor;
+
+	pTable->LeavesQty = pNameTb->LeavesQty;				// 未平仓合约数 = 昨持仓 单位是(张)
+	pTable->ObjectMId = pNameTb->ObjectMId;				// 上海期货 0  大连期货 1  郑州期货 2 上海期权 3  大连期权 4  郑州期权 5
+	::memcpy( pTable->UnderlyingCode, pNameTb->UnderlyingCode, sizeof(pNameTb->UnderlyingCode) );// 标的证券代码
+	pTable->PriceLimitType = pNameTb->PriceLimitType;		// 涨跌幅限制类型(N 有涨跌幅)(R 无涨跌幅)
+	pTable->UpLimit = pNameTb->UpLimit;					// 当日期权涨停价格(精确到厘) //[*放大倍数]
+	pTable->DownLimit = pNameTb->DownLimit;				// 当日期权跌停价格(精确到厘) //[*放大倍数]
+	pTable->LotSize = pNameTb->LotSize;					// 一手等于几张合约
+	pTable->ContractMult = pNameTb->ContractMult;		// 合约乘数
+	pTable->XqPrice = pNameTb->XqPrice;					// 行权价格(精确到厘) //[*放大倍数] 
+	pTable->StartDate = pNameTb->StartDate;				// 首个交易日(YYYYMMDD)
+	pTable->EndDate = pNameTb->EndDate;					// 最后交易日(YYYYMMDD)
+	pTable->XqDate = pNameTb->XqDate;					// 行权日(YYYYMM)
+	pTable->DeliveryDate = pNameTb->DeliveryDate;		// 交割日(YYYYMMDD)
+	pTable->ExpireDate = pNameTb->ExpireDate;			// 到期日(YYYYMMDD)
+
+	::memcpy( poutbuf, tempbuf, sizeof(XDFAPI_NameTableCnfEx) );
+
+	return sizeof(XDFAPI_NameTableCnfEx);
 }
 
 int		MCnfDll::inner_TransNameTable( void * pData, char* poutbuf)

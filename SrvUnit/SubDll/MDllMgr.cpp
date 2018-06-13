@@ -346,6 +346,20 @@ int		MDllMgr::GetStopFlagTable(uint8_t cMarket, char* pszInBuf, int32_t nInBytes
 	return 0;
 }
 */
+
+int MDllMgr::GetCodeTableEx( uint8_t cMarket, char* pszInBuf, int32_t nInBytes, int32_t& nCount )
+{
+	int				nMarket = Global_XDFID2MarketID( cMarket );
+	MData4XDll*		pDll = GetMarketDll( nMarket );
+
+	if( pDll )
+	{
+		return pDll->outer_GetCodeTableEx( pszInBuf, nInBytes, nCount );
+	}
+
+	return 0;
+}
+
 int		MDllMgr::GetCodeTable(uint8_t cMarket, char* pszInBuf, int32_t nInBytes, int32_t& nCount)
 {
 	int nMarket = Global_XDFID2MarketID(cMarket);

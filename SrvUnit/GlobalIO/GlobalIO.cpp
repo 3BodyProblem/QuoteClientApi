@@ -4,7 +4,7 @@
 
 
 QuoteClientSpi *	Global_pSpi =0;
-bool				Global_bInit =false;
+bool				Global_bInit = false;
 int32_t				Global_MajorVer = 5;
 int32_t				Global_MinorVer = 16;
 HANDLE				Global_Handle=0;
@@ -144,3 +144,7 @@ void			Global_EndWork()
 	Global_QueryClient.Release();
 	printf("[XDFClient:Global_EndWork]end\n");
 }
+
+
+
+

@@ -152,6 +152,7 @@ public:
 
 public:	
 	int				GetCodeTable(uint8_t cMarket, char* pszInBuf, int32_t nInBytes, int32_t& nCount);
+	int				GetCodeTableEx(uint8_t cMarket, char* pszInBuf, int32_t nInBytes, int32_t& nCount);
 	int				GetMarketInfo(uint8_t cMarket, char* pszInBuf, int32_t nInBytes);
 	int				GetLastMarketDataAll(uint8_t cMarket, char* pszInBuf, int32_t nInBytes);
 	int				GetMarketStatus(uint8_t cMarket,int32_t& nStatus, uint32_t& ulTime, int64_t * pI64Send, int64_t * pI64Recv);

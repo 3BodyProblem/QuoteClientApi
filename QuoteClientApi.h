@@ -130,6 +130,16 @@ public:
 	virtual int STDCALL			GetMarketStatus(unsigned char cMarket,int& nStatus, unsigned int& ulTime, __int64 * pI64Send, __int64 * pI64Recv)=0;
 };
 
+/**
+ * @class				QuoteClientApiEx
+ * @brief				行情获取类扩展
+ * @author				barry
+ */
+class QuoteClientApiEx : public QuoteClientApi
+{
+public:
+
+};
 
 /**
  * @brief						当日行情查询回调接口
