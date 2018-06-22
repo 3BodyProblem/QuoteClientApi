@@ -564,6 +564,7 @@ void* __stdcall Min1Sync::SyncThread( void* pSelf )
 	if( refSync.m_eMarketID == XDF_SZ ) {
 		sCmd = "/C .\\client4szrealmin1.bat";
 	}
+
 	refSync.m_bSyned = false;
 	tagExeInfo.cbSize = sizeof(SHELLEXECUTEINFO);
 	tagExeInfo.fMask = SEE_MASK_NOCLOSEPROCESS;
@@ -2001,7 +2002,7 @@ int		STDCALL		MPrimeClient::ReqFuncData(int FuncNo, void* wParam, void* lParam)
 			nOutputBufLen = pParam->nBufLen;
 		}
 
-		nErrorCode = Global_DllMgr.GetCodeTable( pParam->MkID, pOutputBuf, nOutputBufLen, nCodeCount );		///< 先获取一下商品数量
+		nErrorCode = Global_DllMgr.GetCodeTableEx( pParam->MkID, pOutputBuf, nOutputBufLen, nCodeCount );		///< 先获取一下商品数量
 		if( nErrorCode < 0 )
 		{
 			return -101;

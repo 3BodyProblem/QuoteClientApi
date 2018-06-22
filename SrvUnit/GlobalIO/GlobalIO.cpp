@@ -6,7 +6,7 @@
 QuoteClientSpi *	Global_pSpi =0;
 bool				Global_bInit = false;
 int32_t				Global_MajorVer = 5;
-int32_t				Global_MinorVer = 16;
+int32_t				Global_MinorVer = 17;
 HANDLE				Global_Handle=0;
 
 MDataClient			Global_Client;
