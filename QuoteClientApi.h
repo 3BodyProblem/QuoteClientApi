@@ -151,14 +151,14 @@ class QuoteQuerySpi
 {
 public:
 	/**
-	 * @brief					返回分钟线的查询信息
+	 * @brief					回调最新一次从服务器同步的全部1分钟线的数据
 	 * @param[in]				cMarket					市场ID
 	 * @param[in]				pMinueLine				分钟线
 	 * @param[in]				pszError				错误信息(长度不超过1024Byte)
 	 * @param[in]				nRequestID				请求时的ID
 	 * @param[in]				bIsLast					是否是最后一条
 	 */
-	virtual	void STDCALL		OnRspQryMinuteLine( char cMarket, const T_Minute_Line *pMinueLine, const char* pszError, int nRequestID, bool bIsLast ) = 0;
+	virtual	void STDCALL		OnNotifySyncMinuteLine( char cMarket, const T_Minute_Line *pMinueLine, const char* pszError, int nRequestID, bool bIsLast ) = 0;
 
 	/**
 	 * @brief					分钟线实时回调接口
