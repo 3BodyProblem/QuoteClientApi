@@ -300,6 +300,7 @@ protected:
 	int							m_nDataSize;			///< 数据长度
 };
 
+class MQueryClient;
 
 /**
  * @class						SecurityMinCache
@@ -311,7 +312,7 @@ class SecurityMinCache
 public:
 	typedef std::map<std::string,MinGenerator>	T_MAP_MINUTES;
 public:
-	SecurityMinCache( enum XDFMarket eMkID );
+	SecurityMinCache( enum XDFMarket eMkID, MQueryClient* pQueryClientApi );
 	~SecurityMinCache();
 
 	/**
@@ -328,9 +329,14 @@ public:
 
 public:
 	/**
-	 * @brief					激活分钟线落盘线程
+	 * @brief					激活分钟线回调线程
 	 */
 	void						ActivateDumper();
+
+	/**
+	 * @brief					停止分钟线回调线程
+	 */
+	void						StopDumper();
 
 	/**
 	 * @brief					更新商品的参数信息
@@ -363,13 +369,16 @@ public:
 protected:
 	/**
 	 * @brief					从同步数据文件，加载今日的1分钟线数据
+	 * @return					true			从本地文件加载成功
+								false			未加载，或加载失败
 	 */
-	void						LoadFromSyncDataFile();
+	bool						LoadFromSyncDataFile();
 
 protected:
 	static void*	__stdcall	RealCallbackAndLoadThread( void* pSelf );
 
 protected:
+	MQueryClient*				m_pQueryClientApi;		///< 查询对象指针
 	enum XDFMarket				m_eMarketID;			///< 市场编号
 	bool						m_bSyncDataLoaded;		///< 是否已经加载同步数据
 	Min1Sync					m_objSyncMin1;			///< 1分钟线同步对象
@@ -480,7 +489,6 @@ protected:
 
 private:
 	MThread						m_oQueryThread;					///< 查询响应线程
-	MThread						m_oCallBackThread;				///< 查询响应线程
 	QuoteQuerySpi*				m_pQuoteQuerySpi;				///< 查询响应回调
 	bool						m_bIsQuerying;					///< 任务查询中
 	enum XDFMarket				m_eReqMkID;						///< 请求的市场

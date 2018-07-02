@@ -283,13 +283,13 @@ void Minute60LineStatus::DoQueryResponse( unsigned int nPeriodIndex, unsigned in
 	unsigned int		nDate= MDateTime::Now().DateToLong();
 
 	if( 0 == nPeriodIndex && m_tag1030Line.Date == nDate && m_bCalled0 == true ) {
-		Global_QueryClient.GetHandle()->OnRspQryMinuteLine( m_cMkID, &m_tag1030Line, NULL, nReqID, bIsLast );
+		Global_QueryClient.GetHandle()->OnNotifySyncMinuteLine( m_cMkID, &m_tag1030Line, NULL, nReqID, bIsLast );
 	} else if( 1 == nPeriodIndex && m_tag1300Line.Date == nDate && m_bCalled1 == true ) {
-		Global_QueryClient.GetHandle()->OnRspQryMinuteLine( m_cMkID, &m_tag1300Line, NULL, nReqID, bIsLast );
+		Global_QueryClient.GetHandle()->OnNotifySyncMinuteLine( m_cMkID, &m_tag1300Line, NULL, nReqID, bIsLast );
 	} else if( 2 == nPeriodIndex && m_tag1400Line.Date == nDate && m_bCalled2 == true ) {
-		Global_QueryClient.GetHandle()->OnRspQryMinuteLine( m_cMkID, &m_tag1400Line, NULL, nReqID, bIsLast );
+		Global_QueryClient.GetHandle()->OnNotifySyncMinuteLine( m_cMkID, &m_tag1400Line, NULL, nReqID, bIsLast );
 	} else if( 3 == nPeriodIndex && m_tag1500Line.Date == nDate && m_bCalled3 == true ) {
-		Global_QueryClient.GetHandle()->OnRspQryMinuteLine( m_cMkID, &m_tag1500Line, NULL, nReqID, bIsLast );
+		Global_QueryClient.GetHandle()->OnNotifySyncMinuteLine( m_cMkID, &m_tag1500Line, NULL, nReqID, bIsLast );
 	}
 }
 
@@ -836,7 +836,7 @@ int MinGenerator::CallBack4Query( int nReqID, unsigned int nBeginTime, unsigned 
 			tagMinuteLine.ClosePx = m_pDataCache[i].ClosePx / m_dPriceRate;
 			tagMinuteLine.Voip = m_pDataCache[i].Voip / m_dPriceRate;
 			if( m_pDataCache[i].Time > 0 ) {
-				Global_QueryClient.GetHandle()->OnRspQryMinuteLine( (char)m_eMarket, &tagMinuteLine, NULL, nReqID, bIsLastCB );
+				Global_QueryClient.GetHandle()->OnNotifySyncMinuteLine( (char)m_eMarket, &tagMinuteLine, NULL, nReqID, bIsLastCB );
 			}
 		}
 	}
@@ -954,9 +954,9 @@ void MinGenerator::DumpMinutes()
 	}
 }
 
-SecurityMinCache::SecurityMinCache( enum XDFMarket eMkID )
+SecurityMinCache::SecurityMinCache( enum XDFMarket eMkID, MQueryClient* pQueryClientApi )
  : m_nSecurityCount( 0 ), m_pMinDataTable( NULL ), m_nAlloPos( 0 ), m_eMarketID( eMkID )
- , m_objSyncMin1( eMkID ), m_bSyncDataLoaded( false )
+ , m_objSyncMin1( eMkID ), m_bSyncDataLoaded( false ), m_pQueryClientApi( pQueryClientApi )
 {
 	m_vctCode.clear();
 	m_objMapMinutes.clear();
@@ -1016,6 +1016,16 @@ void SecurityMinCache::ActivateDumper()
 		} else {
 			m_objSyncMin1.Sync();
 		}
+	}
+}
+
+void SecurityMinCache::StopDumper()
+{
+	if( true == m_oRealCbAndLoadThread.rbl_GetRunState() ) {
+		Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::StopDumper() : MarketID = %d, stopping ...", (int)m_eMarketID );
+		m_bSyncDataLoaded = false;
+		m_oRealCbAndLoadThread.StopThread();
+		Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::StopDumper() : MarketID = %d, stopped ...", (int)m_eMarketID );
 	}
 }
 
@@ -1118,10 +1128,11 @@ int SecurityMinCache::UpdateSecurity( const tagCcComm_StockData5& refObj, unsign
 
 int SecurityMinCache::QueryRecords( int nReqID, unsigned int nBeginTime, unsigned int nEndTime )
 {
-	bool				bIsLastCode = false;
-	unsigned int		nCodeNumber = m_vctCode.size();
+	unsigned int		nCallBackNum = 0;					///< 回调实际商品数
+	bool				bIsLastCode = false;				///< 最否为最后一个回调的商品
+	unsigned int		nCodeNumber = m_vctCode.size();		///< 代码长度
 
-	for( unsigned int n = 0; n < nCodeNumber && true == m_oRealCbAndLoadThread.rbl_GetRunState(); n++ )
+	for( unsigned int n = 0; n < nCodeNumber && false == m_oRealCbAndLoadThread.GetThreadStopFlag(); n++ )
 	{
 		T_MAP_MINUTES::iterator	it;
 
@@ -1142,15 +1153,17 @@ int SecurityMinCache::QueryRecords( int nReqID, unsigned int nBeginTime, unsigne
 		if( XDF_SH == m_eMarketID ) {
 			if( (nCode>=1 && nCode<=999) || (nCode>=600000&&nCode<=609999) || (nCode>=510000&&nCode<=519999) ) {
 				it->second.CallBack4Query( nReqID, nBeginTime, nEndTime, bIsLastCode );
+				nCallBackNum++;
 			}
 		} else if( XDF_SZ == m_eMarketID ) {
 			if( (nCode>=399000 && nCode<=399999) || (nCode>=1&&nCode<=9999) || (nCode>=159000&&nCode<=159999) || (nCode>=300000&&nCode<=300999) ) {
 				it->second.CallBack4Query( nReqID, nBeginTime, nEndTime, bIsLastCode );
+				nCallBackNum++;
 			}
 		}
 	}
 
-	return -1;
+	return nCallBackNum;
 }
 
 bool ParseMin1Line( const char* pszLine, double dPxRate, MinGenerator::T_DATA& refData )
@@ -1206,16 +1219,17 @@ bool ParseMin1Line( const char* pszLine, double dPxRate, MinGenerator::T_DATA& r
 	return true;
 }
 
-void SecurityMinCache::LoadFromSyncDataFile()
+bool SecurityMinCache::LoadFromSyncDataFile()
 {
 	if( false == m_bSyncDataLoaded && true == m_objSyncMin1.IsLoaded() )
 	{
 		Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::LoadFromSyncDataFile() : MarketID = %d, loading...................", (int)m_eMarketID );
 
+		unsigned int			nUpdateCount = 0;
 		unsigned int			nYear = MDateTime::Now().DateToLong() / 10000;
 		unsigned int			nCodeNumber = m_vctCode.size();
 
-		for( unsigned int n = 0; n < nCodeNumber && true == m_oRealCbAndLoadThread.rbl_GetRunState(); n++ )
+		for( unsigned int n = 0; n < nCodeNumber && false == m_oRealCbAndLoadThread.GetThreadStopFlag(); n++ )
 		{
 			T_MAP_MINUTES::iterator	it;
 
@@ -1238,7 +1252,7 @@ void SecurityMinCache::LoadFromSyncDataFile()
 
 			objCSV.open( pszDataFilePath, std::ios::binary|std::ios::in );
 			if( objCSV.is_open() ) {
-				for( int n = 0; n < 999; n++ )
+				for( int n = 0; n < 800 && false == m_oRealCbAndLoadThread.GetThreadStopFlag(); n++ )
 				{
 					char					pszLine[215] = { 0  };
 					MinGenerator::T_DATA	tagMin1Data = { 0 };
@@ -1249,7 +1263,9 @@ void SecurityMinCache::LoadFromSyncDataFile()
 
 					if( n > 0 ) {
 						if( true == ParseMin1Line( pszLine, objMinGen.GetPxRate(), tagMin1Data ) )	{
-							objMinGen.AssignMin1( tagMin1Data );
+							if( true == objMinGen.AssignMin1( tagMin1Data ) ) {
+								nUpdateCount++;
+							}
 						}
 					}
 				}
@@ -1260,24 +1276,29 @@ void SecurityMinCache::LoadFromSyncDataFile()
 		}
 
 		m_bSyncDataLoaded = true;				///< 标记为已经加载
-		Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::LoadFromSyncDataFile() : MarketID = %d, loaded ...................", (int)m_eMarketID );
+		Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::LoadFromSyncDataFile() : MarketID = %d, loaded %u ...................", (int)m_eMarketID, nUpdateCount );
+		return true;
 	}
+
+	return false;
 }
 
 void* SecurityMinCache::RealCallbackAndLoadThread( void* pSelf )
 {
+	bool					bNotified = false;						///< 标记： 每次加载或断开重载后，都需要将最新一分钟线，回调一次
 	SecurityMinCache&		refData = *(SecurityMinCache*)pSelf;
 	Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::RealCallbackAndLoadThread() : MarketID = %d, enter...................", (int)(refData.m_eMarketID) );
 
-	while( true == refData.m_oRealCbAndLoadThread.rbl_GetRunState() )
+	while( false == refData.m_oRealCbAndLoadThread.GetThreadStopFlag() )
 	{
 		MThread::Sleep( 1000 * 3 );
 
 		try
 		{
-			unsigned int	nCodeNumber = refData.m_vctCode.size();
+			/////////////// 1分钟实时行情回调 ////////////////////////////////////////////////////////////////////////////////////////////
+			unsigned int			nCodeNumber = refData.m_vctCode.size();
 
-			for( unsigned int n = 0; n < nCodeNumber && true == refData.m_oRealCbAndLoadThread.rbl_GetRunState(); n++ )
+			for( unsigned int n = 0; n < nCodeNumber && false == refData.m_oRealCbAndLoadThread.GetThreadStopFlag(); n++ )
 			{
 				T_MAP_MINUTES::iterator	it;
 
@@ -1289,7 +1310,7 @@ void* SecurityMinCache::RealCallbackAndLoadThread( void* pSelf )
 					}
 				}
 
-				unsigned int				nCode = ::atoi( it->first.c_str() );
+				unsigned int		nCode = ::atoi( it->first.c_str() );
 
 				if( XDF_SH == refData.m_eMarketID ) {
 					if( (nCode>=1 && nCode<=999) || (nCode>=600000&&nCode<=609999) || (nCode>=510000&&nCode<=519999) ) {
@@ -1302,7 +1323,29 @@ void* SecurityMinCache::RealCallbackAndLoadThread( void* pSelf )
 				}
 			}
 
-			refData.LoadFromSyncDataFile();		///< 加载今日同步的1分钟线数据文件
+			//////////// 检查是否有从server端同步今日最新的1分钟线，如果有，则进行一次全时段查询回调(一次连接只需要回调一次) /////////////////
+			refData.LoadFromSyncDataFile();												///< 加载同步下来的1分钟线数据
+			if ( false == bNotified && true == refData.m_objSyncMin1.IsLoaded() )	{	///< 加载今日同步的1分钟线数据文件
+				unsigned int	nBeginTime = 0;											///< 查询开始时间
+				unsigned int	nEndTime = 0;											///< 查询结束时间
+				unsigned int	nRequestID = 300000000 + (int)(refData.m_eMarketID);	///< 查询请求编号(300000000 + 市场ID)
+
+				switch( refData.m_eMarketID )	{
+				case XDF_SH:
+				case XDF_SZ:
+					nBeginTime = 50101;
+					nEndTime = 190101;
+					break;
+				default:
+					Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "SecurityMinCache::RealCallbackAndLoadThread() : invalid marketid..." );
+					continue;
+				}
+
+				if( 0 == refData.m_pQueryClientApi->QueryMinuteLines( refData.m_eMarketID, nRequestID, 50101, 190101 ) ) {
+					bNotified = true;	///< 标记已经回调过了，下次不用再回调
+					Global_LogUnit.WriteLogEx( 0, 0, "QuoteQueryClient", "SecurityMinCache::RealCallbackAndLoadThread() : MarketID(%d), Active query callback ...", (int)(refData.m_eMarketID) );
+				}
+			}
 		}
 		catch( std::exception& err )
 		{
@@ -1325,7 +1368,7 @@ void* SecurityMinCache::RealCallbackAndLoadThread( void* pSelf )
 MQueryClient::MQueryClient()
  : m_bIsQuerying( false ), m_pQuoteQuerySpi( NULL ), m_nBeginTime( 0 ), m_nEndTime( 0 )
  , m_nMkDate4SHL1( 0 ), m_nMkDate4SZL1( 0 ), m_nMkTime4SHL1( 0 ), m_nMkTime4SZL1( 0 )
- , m_obj1MinCache4SHL1( XDF_SH ), m_obj1MinCache4SZL1( XDF_SZ )
+ , m_obj1MinCache4SHL1( XDF_SH, this ), m_obj1MinCache4SZL1( XDF_SZ, this )
 {
 	Release();
 }
@@ -1350,6 +1393,10 @@ int	MQueryClient::Initialize()
 
 void MQueryClient::Release()
 {
+	m_obj1MinCache4SHL1.StopDumper();
+	m_obj1MinCache4SZL1.StopDumper();
+	m_oQueryThread.StopThread();
+
 	m_nMkDate4SHL1 = 0;
 	m_nMkDate4SZL1 = 0;
 	m_nMkTime4SHL1 = 0;
@@ -1379,7 +1426,7 @@ int STDCALL MQueryClient::QueryMinuteLines( enum XDFMarket eMkID, unsigned int n
 {
 	if( true == m_bIsQuerying )
 	{
-		return -1;							///< 还有在执行中的请求，当前本次请求被忽略
+		return -1024;						///< 还有在执行中的请求，当前本次请求被忽略
 	}
 
 	if( NULL == m_pQuoteQuerySpi )
@@ -1430,33 +1477,20 @@ void* STDCALL MQueryClient::QueryThreadFunc( void* pParam )
 				{
 					pSelf->m_obj1MinCache4SZL1.QueryRecords( pSelf->m_nRequestID, pSelf->m_nBeginTime, pSelf->m_nEndTime );
 				}
+
+				pSelf->m_bIsQuerying = false;
 			}
 		}
 		catch( std::exception& err )
 		{
 			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "MQueryClient::QueryThreadFunc() : exception : %s", err.what() );
-			pSelf->m_pQuoteQuerySpi->OnRspQryMinuteLine( (char)(pSelf->m_eReqMkID), NULL, err.what(), pSelf->m_nRequestID, true );
+			pSelf->m_pQuoteQuerySpi->OnNotifySyncMinuteLine( (char)(pSelf->m_eReqMkID), NULL, err.what(), pSelf->m_nRequestID, true );
 		}
 		catch( ... )
         {
 			Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "MQueryClient::QueryThreadFunc() : unknow exception" );
-			pSelf->m_pQuoteQuerySpi->OnRspQryMinuteLine( (char)(pSelf->m_eReqMkID), NULL, "unknow exception", pSelf->m_nRequestID, true );
+			pSelf->m_pQuoteQuerySpi->OnNotifySyncMinuteLine( (char)(pSelf->m_eReqMkID), NULL, "unknow exception", pSelf->m_nRequestID, true );
         }
-
-		switch( pSelf->m_eReqMkID )
-		{
-		case XDF_SH:
-			if( true == pSelf->m_bIsQuerying && pSelf->m_nWareCount4SHL1 > 0 ) {
-				pSelf->m_bIsQuerying = false;
-			}
-		case XDF_SZ:
-			if( true == pSelf->m_bIsQuerying && pSelf->m_nWareCount4SZL1 > 0 ) {
-				pSelf->m_bIsQuerying = false;
-			}
-			break;
-		default:
-			break;
-		}
 	}
 
 	return NULL;
@@ -1522,8 +1556,18 @@ void MQueryClient::OnMarketAvailableNotify( unsigned char cMkID, int nStatus )
 {
 	int		nRet = 0;
 
-	if( XRS_Normal != nStatus || NULL == m_pQuoteQuerySpi )		///< 只处理某市场状态为“可服务”的情况
+	if( XRS_Normal!=nStatus || NULL==m_pQuoteQuerySpi )	///< 只处理某市场状态为“可服务”的情况
 	{
+		switch( cMkID )
+		{
+		case XDF_SH:
+			m_obj1MinCache4SHL1.StopDumper();			///< 停止回调线程
+			break;
+		case XDF_SZ:
+			m_obj1MinCache4SZL1.StopDumper();			///< 停止回调线程
+			break;
+		}
+
 		return;
 	}
 

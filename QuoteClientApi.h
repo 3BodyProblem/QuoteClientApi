@@ -131,17 +131,6 @@ public:
 };
 
 /**
- * @class				QuoteClientApiEx
- * @brief				行情获取类扩展
- * @author				barry
- */
-class QuoteClientApiEx : public QuoteClientApi
-{
-public:
-
-};
-
-/**
  * @brief						当日行情查询回调接口
  * @class						QuoteQuerySpi
  * @author						barry
