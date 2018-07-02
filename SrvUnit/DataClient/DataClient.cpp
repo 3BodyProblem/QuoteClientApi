@@ -751,7 +751,7 @@ bool MinGenerator::AssignMin1( T_DATA& objData )
 	int					nDataIndex = -1;
 
 	if( nNowT >= 150000 )	{
-		m_nWriteSize = 240;
+		m_nWriteSize = 241;
 	}
 
 	if( nMKTime >= 93000 && nMKTime < 130000 ) {
@@ -1241,33 +1241,39 @@ bool SecurityMinCache::LoadFromSyncDataFile()
 				}
 			}
 
+			bool							bIsEOF = false;
 			std::ifstream					objCSV;
 			const std::string&				sCode = it->first;
 			MinGenerator&					objMinGen = it->second;
 			char							pszFileName[128] = { 0 };
 			char							pszDataFilePath[1024] = { 0 };
 
-			::sprintf( pszFileName, "SSE\\MIN1_TODAY\\%s\\MIN%s_%u.csv", sCode.c_str(), sCode.c_str(), nYear );
+			if( XDF_SH == m_eMarketID ) {
+				::sprintf( pszFileName, "SSE\\MIN1_TODAY\\%s\\MIN%s_%u.csv", sCode.c_str(), sCode.c_str(), nYear );
+			}	else	{
+				::sprintf( pszFileName, "SZSE\\MIN1_TODAY\\%s\\MIN%s_%u.csv", sCode.c_str(), sCode.c_str(), nYear );
+			}
 			::PathCombine( pszDataFilePath, Global_Option.GetSyncDataFolder(), pszFileName );
 
 			objCSV.open( pszDataFilePath, std::ios::binary|std::ios::in );
 			if( objCSV.is_open() ) {
-				for( int n = 0; n < 800 && false == m_oRealCbAndLoadThread.GetThreadStopFlag(); n++ )
+				for( int n = 0; false == bIsEOF && n < 300 && false == m_oRealCbAndLoadThread.GetThreadStopFlag(); n++ )
 				{
 					char					pszLine[215] = { 0  };
 					MinGenerator::T_DATA	tagMin1Data = { 0 };
 
 					if( !objCSV.getline( pszLine, sizeof(pszLine) ) )	{
-						break;			///< EOF
+						bIsEOF = true;			///< EOF
 					}
 
-					if( n > 0 ) {
+					if( n > 0  && ::strlen(pszLine) > 0 ) {
 						if( true == ParseMin1Line( pszLine, objMinGen.GetPxRate(), tagMin1Data ) )	{
 							if( true == objMinGen.AssignMin1( tagMin1Data ) ) {
 								nUpdateCount++;
 							}
 						}
 					}
+
 				}
 
 				objCSV.close();
