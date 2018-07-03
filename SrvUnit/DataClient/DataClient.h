@@ -289,6 +289,9 @@ protected:
 	double						m_dAmountBefore930;		///< 9:30前的金额
 	unsigned __int64			m_nVolumeBefore930;		///< 9:30前的量
 	unsigned __int64			m_nNumTradesBefore930;	///< 9:30前的笔数
+	double						m_dAmountOfRecover;		///< 请求回来的金额计数
+	unsigned __int64			m_nVolumeOfRecover;		///< 请求回来的量计数
+	unsigned __int64			m_nNumTradesOfRecover;	///< 请求回来的笔数计数
 protected:
 	double						m_dPriceRate;			///< 放大倍数
 	enum XDFMarket				m_eMarket;				///< 市场编号

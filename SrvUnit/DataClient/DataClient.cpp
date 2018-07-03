@@ -595,12 +595,14 @@ void* __stdcall Min1Sync::SyncThread( void* pSelf )
 MinGenerator::MinGenerator()
  : m_nDate( 0 ), m_nMaxLineCount( 241 ), m_pDataCache( NULL ), m_dPriceRate( 0 )
  , m_nWriteSize( -1 ), m_nDataSize( 0 ), m_dAmountBefore930( 0. ), m_nVolumeBefore930( 0 ), m_nNumTradesBefore930( 0 )
+ , m_dAmountOfRecover( 0. ), m_nVolumeOfRecover( 0 ), m_nNumTradesOfRecover( 0 )
 {
 	::memset( m_pszCode, 0, sizeof(m_pszCode) );
 }
 
 MinGenerator::MinGenerator( enum XDFMarket eMkID, unsigned int nDate, const std::string& sCode, double dPriceRate, T_DATA& objData, T_DATA* pBufPtr )
 : m_nMaxLineCount( 241 ), m_nWriteSize( -1 ), m_nDataSize( 0 ), m_dAmountBefore930( 0. ), m_nVolumeBefore930( 0 ), m_nNumTradesBefore930( 0 )
+, m_dAmountOfRecover( 0. ), m_nVolumeOfRecover( 0 ), m_nNumTradesOfRecover( 0 )
 {
 	m_eMarket = eMkID;
 	m_nDate = nDate;
@@ -621,6 +623,10 @@ MinGenerator& MinGenerator::operator=( const MinGenerator& obj )
 	m_nVolumeBefore930 = obj.m_nVolumeBefore930;
 	m_nNumTradesBefore930 = obj.m_nNumTradesBefore930;
 
+	m_dAmountOfRecover = obj.m_dAmountOfRecover;
+	m_nVolumeOfRecover = obj.m_nVolumeOfRecover;
+	m_nNumTradesOfRecover = obj.m_nNumTradesOfRecover;
+
 	m_pDataCache = obj.m_pDataCache;
 	m_nWriteSize = obj.m_nWriteSize;
 	m_nDataSize = obj.m_nDataSize;
@@ -632,6 +638,10 @@ int MinGenerator::Initialize()
 {
 	m_nWriteSize = -1;
 	m_nDataSize = 0;
+
+	m_dAmountOfRecover = 0.;
+	m_nVolumeOfRecover = 0;
+	m_nNumTradesOfRecover = 0;
 
 	return 0;
 }
@@ -708,12 +718,12 @@ int MinGenerator::Update( T_DATA& objData )
 	pData->NumTrades = objData.NumTrades;
 	pData->Voip = objData.Voip;
 	pData->ClosePx = objData.ClosePx;
-	if( pData->Time == 0 ) {
+	if( pData->Time == 0 ) {						///< 该1分钟线位置结构的初始化，开、高、低、收都等于收盘价
 		pData->Time = objData.Time;
 		pData->OpenPx = objData.ClosePx;
 		pData->HighPx = objData.ClosePx;
 		pData->LowPx = objData.ClosePx;
-	} else {
+	} else {										///< 该1分钟线位置的后续更新，调整最高、最低价
 		pData->Time = objData.Time;
 		if( objData.ClosePx > pData->HighPx ) {
 			pData->HighPx = objData.ClosePx;
@@ -752,6 +762,8 @@ bool MinGenerator::AssignMin1( T_DATA& objData )
 
 	if( nNowT >= 150000 )	{
 		m_nWriteSize = 241;
+	} else if( nNowT > 113000 && nNowT < 130000 )	{
+		m_nWriteSize = 120;
 	}
 
 	if( nMKTime >= 93000 && nMKTime < 130000 ) {
@@ -774,8 +786,8 @@ bool MinGenerator::AssignMin1( T_DATA& objData )
 		}
 	}
 
-	if( nDataIndex >= m_nWriteSize ) {				///< 从同步文件恢复只恢复到当前待生成实时min1线的位置
-		return true;
+	if( nDataIndex > m_nWriteSize ) {				///< 从同步文件恢复只恢复到当前待生成实时min1线的位置
+		return false;
 	}
 
 	if( nDataIndex >= 241 || nDataIndex < 0 ) {
@@ -783,8 +795,40 @@ bool MinGenerator::AssignMin1( T_DATA& objData )
 		return false;
 	}
 
-	T_DATA*		pData = m_pDataCache + nDataIndex;
-	::memcpy( pData, &objData, sizeof(T_DATA) );
+	if( 0 == nDataIndex ) {	///< 9:30这个节点的处理, (原样copy),  直接把server端已经计算好的一分钟线数据，对号入座写入相应的位置
+		T_DATA*		pData = m_pDataCache + nDataIndex;
+
+		::memcpy( pData, &objData, sizeof(T_DATA) );
+		///< 9:30的1分钟线的量是全量（不是差量）
+		m_dAmountOfRecover = objData.Amount;
+		m_nVolumeOfRecover = objData.Volume;
+		m_nNumTradesOfRecover = objData.NumTrades;
+	} else { ///< 9:31分以后的所有节点的处理, 后一分钟线，决定前一线钟线，和前前值之间的差值
+		if( 1 == nDataIndex ) {
+			///< 为计算第二笔，准备好30分前的最后一笔的价格状态
+			m_dAmountBefore930 = m_dAmountOfRecover - objData.Amount;
+			m_nVolumeBefore930 = m_nVolumeOfRecover - objData.Volume;
+			m_nNumTradesBefore930 = m_nNumTradesOfRecover - objData.NumTrades;
+			m_dAmountOfRecover = m_dAmountBefore930 + objData.Amount;
+			m_nVolumeOfRecover = m_nVolumeBefore930 + objData.Volume;
+			m_nNumTradesOfRecover = m_nNumTradesBefore930 + objData.NumTrades;
+		} else {
+			m_dAmountOfRecover += objData.Amount;
+			m_nVolumeOfRecover += objData.Volume;
+			m_nNumTradesOfRecover += objData.NumTrades;
+		}
+
+		if( nDataIndex > 1 ) {
+			T_DATA*		pPreData = m_pDataCache + (nDataIndex-1);
+			///< 把1分线数据的价格值，赋值到前一分钟上(因为当前一分钟价格计算自前一分钟）
+			::memcpy( pPreData, &objData, sizeof(T_DATA) );
+
+			pPreData->Amount = m_dAmountOfRecover;
+			pPreData->Volume = m_nVolumeOfRecover;
+			pPreData->NumTrades = m_nNumTradesOfRecover;
+
+		}
+	}
 
 	return true;
 }
@@ -826,7 +870,7 @@ int MinGenerator::CallBack4Query( int nReqID, unsigned int nBeginTime, unsigned 
 			tagMinuteLine.Time = 150000;						///< 15:00~15:00 = 1根 (i:240)
 		}
 
-		if( tagMinuteLine.Time >= nBeginTime && tagMinuteLine.Time <= nEndTime )	{
+		if( 0 == i ) {	////////////////////////< 第一个节点是9:30，此时只需要将9:30分的第一个快照回调
 			tagMinuteLine.Amount = m_pDataCache[i].Amount;
 			tagMinuteLine.Volume = m_pDataCache[i].Volume;
 			tagMinuteLine.NumTrades = m_pDataCache[i].NumTrades;
@@ -838,6 +882,47 @@ int MinGenerator::CallBack4Query( int nReqID, unsigned int nBeginTime, unsigned 
 			if( m_pDataCache[i].Time > 0 ) {
 				Global_QueryClient.GetHandle()->OnNotifySyncMinuteLine( (char)m_eMarket, &tagMinuteLine, NULL, nReqID, bIsLastCB );
 			}
+		} else {		////////////////////////< 处理9:30后的分钟线计算与回调	 [1. 前面无成交的情况 2.前面是连续成交的情况]
+			if( i - nLastLineIndex > 1 ) {	///< 如果前面n分钟内无成交，则开盘最高最低等于ClosePx
+				tagMinuteLine.OpenPx = tagLastLine.ClosePx;
+				tagMinuteLine.HighPx = tagLastLine.ClosePx;
+				tagMinuteLine.LowPx = tagLastLine.ClosePx;
+				tagMinuteLine.ClosePx = tagLastLine.ClosePx;
+				tagMinuteLine.Voip = tagLastLine.Voip;
+			} else {						///< 最近一分钟内有连续成交
+				tagMinuteLine.OpenPx = tagLastLine.OpenPx;
+				tagMinuteLine.HighPx = tagLastLine.HighPx;
+				tagMinuteLine.LowPx = tagLastLine.LowPx;
+				tagMinuteLine.ClosePx = tagLastLine.ClosePx;
+				tagMinuteLine.Voip = tagLastLine.Voip;
+				tagMinuteLine.Amount = tagLastLine.Amount - tagLastLastLine.Amount;
+				tagMinuteLine.Volume = tagLastLine.Volume - tagLastLastLine.Volume;
+				tagMinuteLine.NumTrades = tagLastLine.NumTrades - tagLastLastLine.NumTrades;
+			}
+			if( tagMinuteLine.Time > 0 ) {
+				Global_QueryClient.GetHandle()->OnNotifySyncMinuteLine( (char)m_eMarket, &tagMinuteLine, NULL, nReqID, bIsLastCB );
+			}
+		}
+
+		///< 记录： 本次的金额，量等信息，供用于后一笔的差值计算
+		if( m_pDataCache[i].Volume > 0 ) {
+			if( i == 0 ) {	///< 将9:30前最后一记赋值，用于计算9:31那笔的差值
+				tagLastLastLine.Amount = m_dAmountBefore930;
+				tagLastLastLine.Volume = m_nVolumeBefore930;
+				tagLastLastLine.NumTrades = m_nNumTradesBefore930;
+			} else {		///< 用于计算9:31以后的分钟线差值
+				::memcpy( &tagLastLastLine, &tagLastLine, sizeof tagLastLine );
+			}
+			///< 记录上一次快照的最后状态值
+			nLastLineIndex = i;
+			tagLastLine.Amount = m_pDataCache[i].Amount;
+			tagLastLine.Volume = m_pDataCache[i].Volume;
+			tagLastLine.NumTrades = m_pDataCache[i].NumTrades;
+			tagLastLine.OpenPx = m_pDataCache[i].OpenPx / m_dPriceRate;
+			tagLastLine.HighPx = m_pDataCache[i].HighPx / m_dPriceRate;
+			tagLastLine.LowPx = m_pDataCache[i].LowPx / m_dPriceRate;
+			tagLastLine.ClosePx = m_pDataCache[i].ClosePx / m_dPriceRate;
+			tagLastLine.Voip = m_pDataCache[i].Voip / m_dPriceRate;
 		}
 	}
 
@@ -846,24 +931,20 @@ int MinGenerator::CallBack4Query( int nReqID, unsigned int nBeginTime, unsigned 
 
 void MinGenerator::DumpMinutes()
 {
+	unsigned int			nLastLineIndex = 0;						///< 上一笔快照是索引值
+	T_MIN_LINE				tagLastLine = { 0 };					///< 上一笔快照的最后情况
+	T_MIN_LINE				tagLastLastLine = { 0 };				///< 上上笔快照的最后情况
+
+	if( true == s_bCloseMarket ) m_nDataSize = m_nMaxLineCount;		///< 盘后，需要回调全部数据
 	if( NULL == m_pDataCache ) {
 		Global_LogUnit.WriteLogEx( 3, 0, "QuoteQueryClient", "MinGenerator::DumpMinutes() : invalid buffer pointer 4 code:%s", m_pszCode );
 		return;
 	}
 
-	unsigned int			nLastLineIndex = 0;				///< 上一笔快照是索引值
-	T_MIN_LINE				tagLastLine = { 0 };			///< 上一笔快照的最后情况
-	T_MIN_LINE				tagLastLastLine = { 0 };		///< 上上笔快照的最后情况
-
-	if( true == s_bCloseMarket ) m_nDataSize = m_nMaxLineCount;
 	///< 从头遍历，直到最后一个收到的时间节点上
 	for( int i = 0; i < m_nDataSize; i++ )
 	{
-		///< 收市，需要生成所有分钟线
-		if( true == s_bCloseMarket ) {
-			m_nDataSize = m_nMaxLineCount;
-		}
-		///< 跳过已经落盘过的时间节点，以m_pDataCache[i].Time大于零为标识，进行"后续写入"
+		///< 跳过已经回调过的时间节点(i > m_nWriteSize)，以m_pDataCache[i].Time大于零为标识，进行"后续写入"
 		if( i > m_nWriteSize ) {
 			T_Minute_Line		tagMinuteLine = { 0 };
 
@@ -885,7 +966,7 @@ void MinGenerator::DumpMinutes()
 				tagMinuteLine.Time = 150000;						///< 15:00~15:00 = 1根 (i:240)
 			}
 
-			if( 0 == i ) {	////////////////////////< 第一个节点是9:30，此时只需要将9:30分的第一个快照落盘
+			if( 0 == i ) {	////////////////////////< 第一个节点是9:30，此时只需要将9:30分的第一个快照回调
 				tagMinuteLine.Amount = m_pDataCache[i].Amount;
 				tagMinuteLine.Volume = m_pDataCache[i].Volume;
 				tagMinuteLine.NumTrades = m_pDataCache[i].NumTrades;
@@ -899,7 +980,7 @@ void MinGenerator::DumpMinutes()
 				}
 
 				m_nWriteSize = i;									///< 更新最新的写盘数据位置
-			} else {		////////////////////////< 处理9:30后的分钟线计算与落盘的情况 [1. 前面无成交的情况 2.前面是连续成交的情况]
+			} else {		////////////////////////< 处理9:30后的分钟线计算与回调	 [1. 前面无成交的情况 2.前面是连续成交的情况]
 				if( i - nLastLineIndex > 1 ) {	///< 如果前面n分钟内无成交，则开盘最高最低等于ClosePx
 					tagMinuteLine.OpenPx = tagLastLine.ClosePx;
 					tagMinuteLine.HighPx = tagLastLine.ClosePx;
@@ -916,15 +997,8 @@ void MinGenerator::DumpMinutes()
 					tagMinuteLine.Volume = tagLastLine.Volume - tagLastLastLine.Volume;
 					tagMinuteLine.NumTrades = tagLastLine.NumTrades - tagLastLastLine.NumTrades;
 				}
-				if( m_pDataCache[i].Time > 0 && tagMinuteLine.Volume > 0 ) {
-					m_pDataCache[i].OpenPx = (int)(tagMinuteLine.OpenPx * m_dPriceRate);
-					m_pDataCache[i].HighPx = (int)(tagMinuteLine.HighPx * m_dPriceRate);
-					m_pDataCache[i].LowPx = (int)(tagMinuteLine.LowPx * m_dPriceRate);
-					m_pDataCache[i].ClosePx = (int)(tagMinuteLine.ClosePx * m_dPriceRate);
-					m_pDataCache[i].Voip = (int)(tagMinuteLine.Voip * m_dPriceRate);
-					m_pDataCache[i].Amount = tagMinuteLine.Amount;
-					m_pDataCache[i].Volume = tagMinuteLine.Volume;
-					m_pDataCache[i].NumTrades = tagMinuteLine.NumTrades;
+
+				if( tagMinuteLine.Time > 0 ) {
 					Global_QueryClient.GetHandle()->OnMarketMinuteLine( m_eMarket, &tagMinuteLine );
 				}
 				m_nWriteSize = i;										///< 更新最新的写盘数据位置
@@ -1251,10 +1325,11 @@ bool SecurityMinCache::LoadFromSyncDataFile()
 			if( XDF_SH == m_eMarketID ) {
 				::sprintf( pszFileName, "SSE\\MIN1_TODAY\\%s\\MIN%s_%u.csv", sCode.c_str(), sCode.c_str(), nYear );
 			}	else	{
-				::sprintf( pszFileName, "SZSE\\MIN1_TODAY\\%s\\MIN%s_%u.csv", sCode.c_str(), sCode.c_str(), nYear );
+				::sprintf( pszFileName,"SZSE\\MIN1_TODAY\\%s\\MIN%s_%u.csv", sCode.c_str(), sCode.c_str(), nYear );
 			}
 			::PathCombine( pszDataFilePath, Global_Option.GetSyncDataFolder(), pszFileName );
 
+			nUpdateCount++;
 			objCSV.open( pszDataFilePath, std::ios::binary|std::ios::in );
 			if( objCSV.is_open() ) {
 				for( int n = 0; false == bIsEOF && n < 300 && false == m_oRealCbAndLoadThread.GetThreadStopFlag(); n++ )
@@ -1268,9 +1343,7 @@ bool SecurityMinCache::LoadFromSyncDataFile()
 
 					if( n > 0  && ::strlen(pszLine) > 0 ) {
 						if( true == ParseMin1Line( pszLine, objMinGen.GetPxRate(), tagMin1Data ) )	{
-							if( true == objMinGen.AssignMin1( tagMin1Data ) ) {
-								nUpdateCount++;
-							}
+							objMinGen.AssignMin1( tagMin1Data );
 						}
 					}
 
