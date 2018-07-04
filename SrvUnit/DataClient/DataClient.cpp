@@ -998,7 +998,7 @@ void MinGenerator::DumpMinutes()
 					tagMinuteLine.NumTrades = tagLastLine.NumTrades - tagLastLastLine.NumTrades;
 				}
 
-				if( tagMinuteLine.Time > 0 ) {
+				if( tagMinuteLine.ClosePx > 0 ) {
 					Global_QueryClient.GetHandle()->OnMarketMinuteLine( m_eMarket, &tagMinuteLine );
 				}
 				m_nWriteSize = i;										///< 更新最新的写盘数据位置
