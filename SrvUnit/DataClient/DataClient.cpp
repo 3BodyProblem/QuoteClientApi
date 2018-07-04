@@ -899,8 +899,9 @@ int MinGenerator::CallBack4Query( int nReqID, unsigned int nBeginTime, unsigned 
 				tagMinuteLine.Volume = tagLastLine.Volume - tagLastLastLine.Volume;
 				tagMinuteLine.NumTrades = tagLastLine.NumTrades - tagLastLastLine.NumTrades;
 			}
-			if( tagMinuteLine.Time > 0 ) {
+			if( m_pDataCache[i-1].Time > 0 ) {
 				Global_QueryClient.GetHandle()->OnNotifySyncMinuteLine( (char)m_eMarket, &tagMinuteLine, NULL, nReqID, bIsLastCB );
+				m_pDataCache[i-1].Time = 0;
 			}
 		}
 
@@ -977,6 +978,7 @@ void MinGenerator::DumpMinutes()
 				tagMinuteLine.Voip = m_pDataCache[i].Voip / m_dPriceRate;
 				if( m_pDataCache[i].Time > 0 ) {
 					Global_QueryClient.GetHandle()->OnMarketMinuteLine( m_eMarket, &tagMinuteLine );
+					m_pDataCache[i].Time = 0;
 				}
 
 				m_nWriteSize = i;									///< 更新最新的写盘数据位置
@@ -998,9 +1000,11 @@ void MinGenerator::DumpMinutes()
 					tagMinuteLine.NumTrades = tagLastLine.NumTrades - tagLastLastLine.NumTrades;
 				}
 
-				if( tagMinuteLine.ClosePx > 0 ) {
+				if( m_pDataCache[i].Time > 0 ) {
 					Global_QueryClient.GetHandle()->OnMarketMinuteLine( m_eMarket, &tagMinuteLine );
+					m_pDataCache[i].Time = 0;
 				}
+
 				m_nWriteSize = i;										///< 更新最新的写盘数据位置
 			}
 		}
